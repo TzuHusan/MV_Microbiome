@@ -1,0 +1,1388 @@
+library(phyloseq)
+library(dplyr)
+library(ggplot2)
+library(vegan)
+library(raster)
+library(data.table)
+library(ape)
+library(Hmisc)
+library(reshape2)
+library(ggpubr)
+library(labdsv)
+library(harrietr)
+library(metagenomeSeq)
+library(microbiome)
+library(igraph)
+library(caret)
+library(ggrepel)
+
+taxonomy = read.table("biogeography.nr_v132.wang.taxonomy.csv", sep=",", row.names=1)
+colnames(taxonomy)= c("kingdom", "phylum", "class", "order", "family",  "genus")
+otu = read.table("biogeography.dada2.otu.txt", header=TRUE, row.names=1)
+sample_data = read.table("biogeography-metadata.csv",  header=TRUE, row.names=1, sep=",")
+
+sample_data_numeric = read.table("biogeography-metadata-numeric.csv", header=TRUE, row.names=1, sep=",")
+sample_isotope = read.table("sample.isotope.data.csv", header=TRUE, row.names=1, sep=",")
+sample_data_numeric_coordinate = read.table("biogeography-num-coordinate-mothur.csv", header=TRUE, sep=",", row.names=1)
+location = read.table("sampling-sites.csv", header=TRUE, sep=",", row.names=1)
+taxonomy = as.matrix(taxonomy)
+OTU = otu_table(otu, taxa_are_rows=TRUE)
+Taxonomy = tax_table(taxonomy)
+biogeography = phyloseq(OTU, Taxonomy)
+sampledata = sample_data(sample_data)
+biogeography = merge_phyloseq(sampledata, biogeography)
+subset_biogeography = subset_taxa(biogeography, kingdom!="unknown")
+subset_biogeography= subset_taxa(subset_biogeography, kingdom!="Eukaryota")
+
+**removing PA01_C1_14  due to small read number only 4302**
+remove.subset_biogeography = prune_samples(sample_sums(subset_biogeography) > 5000, subset_biogeography)
+remove.subset_biogeography = prune_taxa(taxa_sums(remove.subset_biogeography)>0, remove.subset_biogeography)
+
+# removeing surface features
+# removing QK01_oil, QK01_mat, QK01_biofilm, GG01_C1_ss01, GG01_C1_sw01, PA01_C1_salt --> 130 samples
+remove.subset_nofeatures_biogeography = subset_samples(remove.subset_biogeography, sample_name!="GG01_C1_sw01"
+										&sample_name!="GG01_C1_ss01"&sample_name!="QK01_biofilm"&
+										sample_name!="QK01_mat"&sample_name!="QK01_oil"&sample_name!="PA01_C1_salt")
+remove.subset_nofeatures_biogeography = prune_taxa(taxa_sums(remove.subset_nofeatures_biogeography) > 1, remove.subset_nofeatures_biogeography)									
+
+# cumulative sum scaling
+metaSeqObject = newMRexperiment(data.frame(remove.subset_biogeography@otu_table)) 
+otu_CSS  = cumNorm(metaSeqObject, p = cumNormStatFast(metaSeqObject))
+CSS.otu = data.frame(MRcounts(otu_CSS, norm=TRUE, log=TRUE))
+CSS.otu = otu_table(CSS.otu, taxa_are_rows=TRUE)
+CSS = phyloseq(CSS.otu, remove.subset_biogeography@sam_data, remove.subset_biogeography@tax_table)
+
+#remove.subset_nofeatures_biogeography
+metaSeqObject.nofeatures = newMRexperiment(data.frame(remove.subset_nofeatures_biogeography@otu_table)) 
+otu.nofeatures_CSS  = cumNorm(metaSeqObject.nofeatures, p = cumNormStatFast(metaSeqObject.nofeatures))
+CSS.nofeatures.otu = data.frame(MRcounts(otu.nofeatures_CSS, norm=TRUE, log=TRUE))
+CSS.nofeatures.otu = otu_table(CSS.nofeatures.otu, taxa_are_rows=TRUE)
+CSS.nofeatures = phyloseq(CSS.nofeatures.otu, remove.subset_nofeatures_biogeography@sam_data, remove.subset_nofeatures_biogeography@tax_table)
+biogeography_CSS_noNA = subset_samples(CSS.nofeatures, NA.=="no")
+biogeography_CSS_noNA = prune_taxa(taxa_sums(biogeography_CSS_noNA) > 0, biogeography_CSS_noNA)
+
+#taxonomy subset
+bacteria = subset_taxa(remove.subset_biogeography, kingdom=="Bacteria")
+archaea = subset_taxa(remove.subset_biogeography, kingdom=="Archaea")
+phylum.asv = phylum.merge %>% tax_table() %>% as("matrix") %>% data.frame()
+phylum.merge = tax_glom(remove.subset_biogeography, taxrank="phylum")
+phylum.merge.proportion = data.frame(taxa_sums(phylum.merge)/sum(remove.subset_biogeography@otu_table))
+order.merge = tax_glom(remove.subset_biogeography, taxrank="order")
+order.merge.proportion = data.frame(taxa_sums(order.merge)/sum(remove.subset_biogeography@otu_table))
+order.asv = order.merge %>% tax_table() %>% as("matrix") %>% data.frame()
+genus.merge = tax_glom(remove.subset_biogeography, taxrank="genus")
+genus.merge.proportion = data.frame(taxa_sums(genus.merge)/sum(remove.subset_biogeography@otu_table))
+genus.asv = genus.merge %>% tax_table() %>% as("matrix") %>% data.frame()
+genus.merge.otu = data.frame(genus.merge@otu_table)
+genus.merge.otu <- +(genus.merge.otu >=1)
+genus.sample = merge(genus.asv,genus.merge.otu, by =0, all = TRUE)
+AK.genus = genus.sample[,grep("^AK", colnames(genus.sample))]
+write.table(file="AK.genus.csv", AK.genus, sep=",", col.names=NA)
+AR.genus = genus.sample[,grep("^AR", colnames(genus.sample))]
+write.table(file="AR.genus.csv", AR.genus, sep=",", col.names=NA)
+COM.genus = genus.sample[,grep("^COM", colnames(genus.sample))]
+write.table(file="COM.genus.csv", COM.genus, sep=",", col.names=NA)
+DSZ.genus = genus.sample[,grep("^DSZ", colnames(genus.sample))]
+write.table(file="DSZ.genus.csv", DSZ.genus, sep=",", col.names=NA)
+GG.genus = genus.sample[,grep("^GG", colnames(genus.sample))]
+write.table(file="GG.genus.csv", GG.genus, sep=",", col.names=NA)
+GJ.genus = genus.sample[,grep("^GJ", colnames(genus.sample))]
+write.table(file="GJ.genus.csv", GJ.genus, sep=",", col.names=NA)
+LGH.genus = genus.sample[,grep("^LGH", colnames(genus.sample))]
+write.table(file="LGH.genus.csv", LGH.genus, sep=",", col.names=NA)
+PA01.genus = genus.sample[,grep("^PA01", colnames(genus.sample))]
+write.table(file="PA01.genus.csv", PA01.genus, sep=",", col.names=NA)
+PA02.genus = genus.sample[,grep("^PA02", colnames(genus.sample))]
+write.table(file="PA02.genus.csv", PA02.genus, sep=",", col.names=NA)
+QK.genus = genus.sample[,grep("^QK", colnames(genus.sample))]
+write.table(file="QK.genus.csv", QK.genus, sep=",", col.names=NA)
+SH.genus = genus.sample[,grep("^SH", colnames(genus.sample))]
+write.table(file="SH.genus.csv", SH.genus, sep=",", col.names=NA)
+SI.genus = genus.sample[,grep("^SI", colnames(genus.sample))]
+write.table(file="SI.genus.csv", SI.genus, sep=",", col.names=NA)
+SM.genus = genus.sample[,grep("^SM", colnames(genus.sample))]
+write.table(file="SM.genus.csv", SM.genus, sep=",", col.names=NA)
+SYNH02_C11.genus = genus.sample[,grep("^SYNH02_C11", colnames(genus.sample))]
+write.table(file="SYNH02_C11.genus.csv", SYNH02_C11.genus, sep=",", col.names=NA)
+SYNH02_C4.genus = genus.sample[,grep("^SYNH02_C4", colnames(genus.sample))]
+write.table(file="SYNH02_C4.genus.csv", SYNH02_C4.genus, sep=",", col.names=NA)
+TA.genus = genus.sample[,grep("^TA", colnames(genus.sample))]
+write.table(file="TA.genus.csv", TA.genus, sep=",", col.names=NA)
+
+biogeography_rarefy = rarefy_even_depth(remove.subset_biogeography, sample.size = min(sample_sums(remove.subset_biogeography)),rngseed = 100, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)
+biogeography_rarefy_noNA = subset_samples(biogeography_rarefy, NA.=="no")
+biogeography_rarefy_noNA = subset_samples(biogeography_rarefy_noNA, sample_name!="GG01_C1_ss01")
+biogeography_rarefy.proportion = transform_sample_counts(biogeography_rarefy, function(x) x/sum(x))
+
+Firmicutes = subset_taxa(remove.subset_biogeography, phylum=="Firmicutes")
+Chloroflexi = subset_taxa(remove.subset_biogeography, phylum=="Chloroflexi")
+Euryarchaeota = subset_taxa(remove.subset_biogeography, phylum=="Euryarchaeota")
+Bacteroidetes = subset_taxa(remove.subset_biogeography, phylum=="Bacteroidetes")
+Deltaproteobacteria = subset_taxa(remove.subset_biogeography, class=="Deltaproteobacteria")
+Gammaproteobacteria = subset_taxa(remove.subset_biogeography, class=="Gammaproteobacteria")
+Betaproteobacteriales = subset_taxa(remove.subset_biogeography, order=="Betaproteobacteriales")
+Desulfobacterales = subset_taxa(remove.subset_biogeography, order=="Desulfobacterales")
+Desulfuromonadales = subset_taxa(remove.subset_biogeography, order=="Desulfuromonadales")
+Hydrogenophilaceae = subset_taxa(remove.subset_biogeography, family=="Hydrogenophilaceae")
+Desulfobulbaceae = subset_taxa(remove.subset_biogeography, family=="Desulfobulbaceae")
+Desulfuromonadaceae = subset_taxa(remove.subset_biogeography, family=="Desulfuromonadaceae")
+Thiobacillus = subset_taxa(remove.subset_biogeography, genus=="Thiobacillus")
+Desulfurivibrio = subset_taxa(remove.subset_biogeography, genus=="Desulfurivibrio")
+Halobacteriales = subset_taxa(remove.subset_biogeography, order=="Halobacteriales")
+Methanosarcinales = subset_taxa(remove.subset_biogeography, order=="Methanosarcinales")
+Haloferacaceae= subset_taxa(remove.subset_biogeography, family=="Haloferacaceae")
+Halobacteriaceae= subset_taxa(remove.subset_biogeography, family=="Halobacteriaceae")
+ANME_2 = subset_taxa(remove.subset_biogeography, family=="ANME-2a-2b")
+
+Thiobacillus = tax_glom(Thiobacillus, taxrank="genus")
+Thiobacillus.absent = names(sample_sums(Thiobacillus)[sample_sums(Thiobacillus) == 0])
+Thiobacillus.present = names(sample_sums(Thiobacillus)[sample_sums(Thiobacillus) > 0])
+
+Desulfurivibrio = tax_glom(Desulfurivibio, taxrank="genus")
+Desulfurivibrio.absent = names(sample_sums(Desulfurivibrio)[sample_sums(Desulfurivibrio) == 0])
+Desulfurivibrio.present = names(sample_sums(Desulfurivibrio)[sample_sums(Desulfurivibrio) > 0])
+
+
+**phylum merge sites**
+merge.otu.samples = data.frame(matrix(ncol=0, nrow=28928))
+rownames(merge.otu.samples) = rownames(remove.subset_biogeography@otu_table)
+otu = remove.subset_biogeography@otu_table
+otu = data.frame(otu)
+
+merge.otu.samples$Georgia.AK03 = rowSums(otu[grep('AK03', names(otu))])
+merge.otu.samples$Italy.AR01 = rowSums(otu[grep('AR01', names(otu))])
+merge.otu.samples$Italy.COM01 = rowSums(otu[grep('COM', names(otu))])
+merge.otu.samples$China.DSZ01 = rowSums(otu[grep('DSZ01', names(otu))])
+merge.otu.samples$Iran.GG01 = rowSums(otu[grep('GG01', names(otu))])
+merge.otu.samples$Georgia.GJ01 = rowSums(otu[grep('GJ01', names(otu))])
+merge.otu.samples$Taiwan.LGH03 = rowSums(otu[grep('LGH03', names(otu))])
+merge.otu.samples$Italy.PA01 = rowSums(otu[grep('PA01', names(otu))])
+merge.otu.samples$Italy.PA02 = rowSums(otu[grep('PA02', names(otu))])
+merge.otu.samples$Georgia.QK01 = rowSums(otu[grep('QK01', names(otu))])
+merge.otu.samples$Myanmar.SH01 = rowSums(otu[grep('SH01', names(otu))])
+merge.otu.samples$Myanmar.SI02 = rowSums(otu[grep('SI02', names(otu))])
+merge.otu.samples$China.SM22 = rowSums(otu[grep('SM22', names(otu))])
+merge.otu.samples$Taiwan.SYNH02 = rowSums(otu[grep('SYNH02', names(otu))])
+merge.otu.samples$Iran.TA = rowSums(otu[grep('TA', names(otu))])
+
+otu.merge =otu_table(merge.otu.samples, taxa_are_rows = TRUE)
+taxonomy = as.matrix(remove.subset_biogeography@tax_table)
+taxonomy = tax_table(taxonomy)
+biogeography.merge = phyloseq(otu.merge,taxonomy)
+biogeography.merge.proportion = transform_sample_counts(biogeography.merge, function(x) x/sum(x))
+
+phylum.proportion = tax_glom(biogeography.merge.proportion, taxrank="phylum")
+phylum.proportion = psmelt(phylum.proportion)
+phylum.proportion.table = data.frame(matrix(ncol=3, nrow=1080))
+colnames(phylum.proportion.table) = c("Sample", "Abundance", "phylum")
+
+phylum.proportion.table$Sample = phylum.proportion$Sample
+phylum.proportion.table$Abundance = phylum.proportion$Abundance
+phylum.proportion.table$phylum = phylum.proportion$phylum
+phylum.proportion.table = acast(phylum.proportion.table, Sample~phylum, value.var="Abundance")
+
+gamma.family.total = data.frame(colSums(gamma.family.table)) #show the proportion of each gamma.family**
+total.proportion = function(x){x/1261342}
+gamma.family.total.prop = data.frame(total.proportion(gamma.family.total))
+
+
+ANMEall = subset_taxa(biogeography.merge, order=="ANME-1"|family=="ANME-2a-2b"|genus=="ANME-3"|genus=="Candidatus_Methanoperedens")
+ANME_3_proportion = subset_taxa(biogeography_rarefy.proportion, genus=="ANME-3")
+ANME_1_proportion = subset_taxa(biogeography_rarefy.proportion, order=="ANME-1")
+ANME_1.sums = colSums(data.frame(colSums(ANME_1_proportion@otu_table)))
+ANME_2_proportion = subset_taxa(biogeography_rarefy.proportion, family=="ANME-2a-2b")
+ANME_2.sums = colSums(data.frame(colSums(ANME_2_proportion@otu_table)))
+
+Desulfobacterales.sum = data.frame(sort(taxa_sums(Desulfobacterales)))
+Thiobacillus = subset_taxa(biogeography.merge, genus=="Thiobacillus")
+Thiobacillus.sums = colSums(data.frame(colSums(Thiobacillus@otu_table)))
+Desulfurivibrio = subset_taxa(biogeography.merge, genus=="Desulfurivibrio")
+Desulfurivibrio.sums = colSums(data.frame(colSums(Desulfurivibrio@otu_table)))
+Methylococcales = subset_taxa(biogeography.merge, order=="Methylococcales")
+
+Hydrogenophilaceae = tax_glom(Hydrogenophilaceae, taxrank="genus")
+Hydrogenophilaceae = psmelt(Hydrogenophilaceae)
+Hydrogenophilaceae.genus = acast(Hydrogenophilaceae, Sample~genus, value.var="Abundance")
+write.table(file="Hydrogenophilaceae.site.proportion.csv", Hydrogenophilaceae.genus, sep=",", col.names=NA)
+
+Desulfobulbaceae = tax_glom(Desulfobulbaceae, taxrank="genus")
+Desulfobulbaceae = psmelt(Desulfobulbaceae)
+Desulfobulbaceae.genus = acast(Desulfobulbaceae, Sample~genus, value.var="Abundance")
+write.table(file="Desulfobulbaceae.site.proportion.csv", Desulfobulbaceae.genus, sep=",", col.names=NA)
+
+Desulfuromonadaceae = tax_glom(Desulfuromonadaceae, taxrank="genus")
+Desulfuromonadaceae = psmelt(Desulfuromonadaceae)
+Desulfuromonadaceae.genus = acast(Desulfuromonadaceae, Sample~genus, value.var="Abundance")
+write.table(file="Desulfuromonadaceae.site.proportion.csv", Desulfuromonadaceae.genus, sep=",", col.names=NA)
+
+**top 50 otu**
+family.merge = tax_glom(biogeography.merge, taxrank="family")
+family.merge_top50 <- prune_taxa(names(sort(taxa_sums(family.merge),TRUE)[1:50]), family.merge)
+family.merge_top50.z = microbiome::transform(family.merge_top50, "Z")
+melt =psmelt(family.merge_top50.z)
+family.top50.z = acast(melt, Sample~family, value.var="Abundance")
+pdf("top50.family.heatmap.pdf", paper="a4r", height=0, width=0)
+heatmap.2(family.top50.z, col=bluered, tracecol="#303030")
+dev.off()
+
+***General taxonomy information***
+**based on samples**
+phylum = tax_glom(biogeography.rarefy.merge, taxrank="phylum")
+bacteria = subset_taxa(biogeography.rarefy.merge, kingdom=="Bacteria")
+archaea =subset_taxa(biogeography.rarefy.merge, kingdom=="Archaea")
+proteobacteria = subset_taxa(biogeography.rarefy.merge, phylum=="Proteobacteria")
+bacteria.class = tax_glom(bacteria, taxrank="class")
+archaea.class = tax_glom(archaea, taxrank="class")
+
+sample.sum =data.frame(sample_sums(biogeography.rarefy.merge)) # = 1261342
+gammaproteobacteria = subset_taxa(biogeography.rarefy.merge, class=="Gammaproteobacteria")
+gammaproteobacteria.sum = data.frame(sample_sums(gammaproteobacteria))
+colSums(gammaproteobacteria.sum) # = 304153
+gammaproteobacteria.family = tax_glom(gammaproteobacteria, taxrank="family")
+gammaproteobacteria.family = psmelt(gammaproteobacteria.family)
+gamma.family.table = data.frame(matrix(ncol=3, nrow=1296))
+colnames(gamma.family.table) = c("Sample", "Abundance", "family")
+gamma.family.table$Sample = gammaproteobacteria.family$Sample
+gamma.family.table$Abundance = gammaproteobacteria.family$Abundance
+gamma.family.table$family = gammaproteobacteria.family$family
+gamma.family.table = acast(gamma.family.table, Sample~family, value.var="Abundance")
+gamma.family.total = data.frame(colSums(gamma.family.table)) #show the proportion of each gamma.family**
+total.proportion = function(x){x/1261342}
+gamma.family.total.prop = data.frame(total.proportion(gamma.family.total))
+
+alphaproteobacteria = subset_taxa(biogeography.rarefy.merge, class=="Alphaproteobacteria")
+alphaproteobacteria.sum = data.frame(sample_sums(alphaproteobacteria))
+colSums(alphaproteobacteria.sum) # = 31805
+
+deltaproteobacteria = subset_taxa(biogeography.rarefy.merge, class=="Deltaproteobacteria")
+deltaproteobacteria.sum = data.frame(sample_sums(deltaproteobacteria))
+colSums(deltaproteobacteria.sum) # = 216676 
+deltaproteobacteria.family = tax_glom(deltaproteobacteria, taxrank="family")
+deltaproteobacteria.family = psmelt(deltaproteobacteria.family)
+delta.family.table = data.frame(matrix(ncol=4, nrow=800))
+colnames(delta.family.table) = c("Sample", "Abundance", "order", "family")
+delta.family.table$Sample = deltaproteobacteria.family$Sample
+delta.family.table$Abundance = deltaproteobacteria.family$Abundance
+delta.family.table$family = deltaproteobacteria.family$family
+delta.family.table$order = deltaproteobacteria.family$order
+delta.family.table = acast(delta.family.table, Sample~order+family, value.var="Abundance")
+delta.family.total = data.frame(colSums(delta.family.table))
+delta.family.total.prop = data.frame(total.proportion(delta.family.total))
+write.table(file="delta.family.total.prop.csv", delta.family.total.prop, sep=",", col.names=NA)
+
+Halobacteria = subset_taxa(biogeography.rarefy.merge, class=="Halobacteria")
+Halobacteria.sum = data.frame(sample_sums(Halobacteria))
+colSums(Halobacteria.sum) # = 216676 
+Halobacteria.family = tax_glom(Halobacteria, taxrank="family")
+Halobacteria.family = psmelt(Halobacteria.family)
+Halo.family.table = data.frame(matrix(ncol=4, nrow=96))
+colnames(Halo.family.table) = c("Sample", "Abundance", "order", "family")
+Halo.family.table$Sample = Halobacteria.family$Sample
+Halo.family.table$Abundance = Halobacteria.family$Abundance
+Halo.family.table$family = Halobacteria.family$family
+Halo.family.table$order = Halobacteria.family$order
+Halo.family.table = acast(Halo.family.table, Sample~order+family, value.var="Abundance")
+Halo.family.total = data.frame(colSums(Halo.family.table))
+Halo.family.total.prop = data.frame(total.proportion(Halo.family.total))
+write.table(file="Halo.family.total.prop.csv", Halo.family.total.prop, sep=",", col.names=NA)
+
+Methanomicrobia = subset_taxa(biogeography.rarefy.merge, class=="Methanomicrobia")
+Methanomicrobia.sum = data.frame(sample_sums(Methanomicrobia))
+colSums(Methanomicrobia.sum) # = 216676 
+Methanomicrobia.family = tax_glom(Methanomicrobia, taxrank="family")
+Methanomicrobia.family = psmelt(Methanomicrobia.family)
+Methanomicrobia.family.table = data.frame(matrix(ncol=4, nrow=272))
+colnames(Methanomicrobia.family.table) = c("Sample", "Abundance", "order", "family")
+Methanomicrobia.family.table$Sample = Methanomicrobia.family$Sample
+Methanomicrobia.family.table$Abundance = Methanomicrobia.family$Abundance
+Methanomicrobia.family.table$family = Methanomicrobia.family$family
+Methanomicrobia.family.table$order = Methanomicrobia.family$order
+Methanomicrobia.family.table = acast(Methanomicrobia.family.table, Sample~order+family, value.var="Abundance")
+Methanomicrobia.family.total = data.frame(colSums(Methanomicrobia.family.table))
+Methanomicrobia.family.total.prop = data.frame(total.proportion(Methanomicrobia.family.total))
+write.table(file="Methanomicrobia.family.total.prop.csv", Methanomicrobia.family.total.prop, sep=",", col.names=NA)
+
+ANMEall = subset_taxa(remove.subset_biogeography, order=="ANME-1"|family=="ANME-2a-2b"|genus=="ANME-3"|genus=="Candidatus_Methanoperedens")
+list =row.names(sample_isotope)
+
+**cosmoplitan OTU**
+D1 = data.frame(remove.subset_biogeography@otu_table)
+D1 = t(D1)
+Cosmo_endem_denoised<-as.data.frame(matrix(NA,ncol(D1),4))
+D1.tmp = matrix(as.numeric(as.matrix(D1)>0), nrow(D1)) #binary table
+rownames(Cosmo_endem_denoised)<-colnames(D1)
+colnames(Cosmo_endem_denoised)<-c("Common","Abund","RelAbund", "genus")
+Cosmo_endem_denoised$Common<-colSums(D1.tmp)
+Cosmo_endem_denoised$Abund<-colSums(D1)
+Cosmo_endem_denoised$RelAbund<-Cosmo_endem_denoised$Abund/sum(D1)
+DIST.all = data.frame(t(combn(rownames(D1),2)))
+DIST.all$shared.otu = 100*(1-as.vector(vegdist(D1.tmp, "jacc", diag = F, upper = F))) # %shared OTUs bewteen sites
+
+genus = tax_glom(biogeography_rarefy, taxrank="genus")
+D3 = data.frame(genus@otu_table)
+D3.taxonomy = data.frame(genus@tax_table)
+D3 =t(D3)
+Cosmo_endem_denoised_genus<-as.data.frame(matrix(NA,ncol(D3),4))
+tmp = matrix(as.numeric(as.matrix(D3)>0), nrow(D3)) #binary table
+rownames(Cosmo_endem_denoised_genus)<-colnames(D3)
+colnames(Cosmo_endem_denoised_genus)<-c("Common","Abund","RelAbund", "genus")
+Cosmo_endem_denoised_genus$Common<-colSums(tmp)
+Cosmo_endem_denoised_genus$Abund<-colSums(D3)
+Cosmo_endem_denoised_genus$RelAbund<-Cosmo_endem_denoised_genus$Abund/sum(D3)
+Cosmo_endem_denoised_genus$genus<-D3.taxonomy$genus
+
+D4 = data.frame(biogeography.merge@otu_table)
+D4 = t(D4)
+D4.taxonomy = data.frame(biogeography.merge@tax_table)
+Cosmo_endem_denoised_merge<-as.data.frame(matrix(NA,ncol(D4),4))
+D4.tmp = matrix(as.numeric(as.matrix(D4)>0), nrow(D4)) #binary table
+rownames(Cosmo_endem_denoised_merge)<-colnames(D4)
+colnames(Cosmo_endem_denoised_merge)<-c("Common","Abund","RelAbund", "genus")
+Cosmo_endem_denoised_merge$Common<-colSums(D4.tmp)
+Cosmo_endem_denoised_merge$Abund<-colSums(D4)
+Cosmo_endem_denoised_merge$RelAbund<-Cosmo_endem_denoised_merge$Abund/sum(D4)
+Cosmo_endem_denoised_merge$Abund<-colSums(D4)
+Cosmo_endem_denoised_merge$genus = D4.taxonomy$genus
+DIST.all = data.frame(t(combn(rownames(D4),2)))
+DIST.all$shared.otu = 100*(1-as.vector(vegdist(D4.tmp, "jacc", diag = F, upper = F))) # %shared OTUs bewteen sites
+
+phylum.merge.rarefy = tax_glom(biogeography.merge.rarefy, taxrank="phylum")
+D5 = data.frame(phylum.merge.rarefy@otu_table)
+D5 = t(D5)
+D5.taxonomy = data.frame(phylum.merge.rarefy@tax_table)
+Cosmo_endem_denoised_merge.rarefy.phylum<-as.data.frame(matrix(NA,ncol(D5),4))
+D5.tmp = matrix(as.numeric(as.matrix(D5) >0), nrow(D5)) #binary table
+rownames(Cosmo_endem_denoised_merge.rarefy.phylum)<-colnames(D5)
+colnames(Cosmo_endem_denoised_merge.rarefy.phylum)<-c("Common","Abund","RelAbund", "phylum")
+Cosmo_endem_denoised_merge.rarefy.phylum$Common<-colSums(tmp)
+Cosmo_endem_denoised_merge.rarefy.phylum$Abund<-colSums(D5)
+Cosmo_endem_denoised_merge.rarefy.phylum$RelAbund<-Cosmo_endem_denoised_merge.rarefy.phylum$Abund/sum(D5)
+Cosmo_endem_denoised_merge.rarefy.phylum$Abund<-colSums(D5)
+Cosmo_endem_denoised_merge.rarefy.phylum$genus = D5.taxonomy$phylum
+DIST.all = data.frame(t(combn(rownames(D5),2)))
+DIST.all$shared.otu = 100*(1-as.vector(vegdist(D5.tmp, "jacc", diag = F, upper = F))) # %shared OTUs bewteen sites
+
+phylum = tax_glom(remove.subset_biogeography, taxrank="phylum")
+D6 = data.frame(phylum@otu_table)
+D6.taxonomy = data.frame(phylum@tax_table)
+D6 =t(D6)
+Cosmo_endem_denoised_phylum<-as.data.frame(matrix(NA,ncol(D6),4))
+tmp = matrix(as.numeric(as.matrix(D6) >0), nrow(D6)) #binary table
+rownames(Cosmo_endem_denoised_phylum)<-colnames(D6)
+colnames(Cosmo_endem_denoised_phylum)<-c("Common","Abund","RelAbund", "phylum")
+Cosmo_endem_denoised_phylum$Common<-colSums(tmp)
+Cosmo_endem_denoised_phylum$Abund<-colSums(D6)
+Cosmo_endem_denoised_phylum$RelAbund<-Cosmo_endem_denoised_phylum$Abund/sum(D6)
+Cosmo_endem_denoised_phylum$phylum<-D6.taxonomy$phylum
+
+**rarefy order proportion**
+
+rarefy.merge.order = tax_glom(biogeography.rarefy.merge, taxrank="order")
+rarefy.merge.order = psmelt(rarefy.merge.order)
+rarefy.merge.order.table = data.frame(matrix(ncol=5, nrow=6608))
+colnames(rarefy.merge.order.table) = c("Sample", "Abundance", "kingdom","class","order")
+rarefy.merge.order.table$Sample = rarefy.merge.order$Sample
+rarefy.merge.order.table$Abundance = rarefy.merge.order$Abundance
+rarefy.merge.order.table$order = rarefy.merge.order$order
+rarefy.merge.order.table$class = rarefy.merge.order$class
+rarefy.merge.order.table$kingdom = rarefy.merge.order$kingdom
+rarefy.merge.order.table = acast(rarefy.merge.order.table, Sample~kingdom+class+order, value.var="Abundance")
+rarefy.merge.order.proportion = data.frame(prop.table(rarefy.merge.order.table, 1))
+rarefy.merge.order.proportion = t(rarefy.merge.order.proportion)
+rarefy.merge.order.proportion.all = data.frame(colSums(prop.table(rarefy.merge.order.table)))
+
+**sample sum**
+sample_sum = data.frame(sample_sums(biogeography))
+subset_sample_sum = sample_sums(subset_biogeography)
+sample_sum_removed = data.frame(sample_sums(remove.subset_biogeography))
+sample_sum_rarefy = data.frame(sample_sums(biogeography_rarefy))
+
+**alphadiversity esitmation**	
+observed = estimate_richness(biogeography_rarefy_noNA, split= TRUE, measures="Observed")
+chao1 = estimate_richness(biogeography_rarefy, split= TRUE, measures="Chao1")
+shannon = estimate_richness(biogeography_rarefy, split= TRUE, measures="Shannon")
+diversity = data.frame(observed, chao1, shannon)
+
+p1 = plot_richness(remove.subset_biogeography,x="site", measures=c("Observed","Shannon","Chao1"))
+
+observed.merge = estimate_richness(biogeography.merge, split= TRUE, measures="Observed")
+chao1.merge = estimate_richness(biogeography.merge, split= TRUE, measures="Chao1")
+shannon.merge = estimate_richness(biogeography.merge, split= TRUE, measures="Shannon")
+diversity.merge = data.frame(observed.merge, chao1.merge, shannon.merge)
+write.table(file="diversity.merge.csv", diversity.merge, sep=",", col.names=NA)
+
+**plot ordination**
+biogeography.ord = ordinate(biogeography_rarefy, "NMDS", "bray", try = 1000, previous.best)
+summary(biogeography.ord)
+stressplot(biogeography.ord)
+p0 = plot_ordination(biogeography_rarefy, biogeography.ord, type="samples", color="site", label="sample_name") + theme_bw()
+p0 = p0 + labs(color="Site")
+
+**envfit**
+
+biogeography.ord.1 = ordinate(biogeography_rarefy_noNA, "NMDS", "bray", weighted=TRUE, try = 1000, previous.best)
+p1 = plot_ordination(biogeography_rarefy_noNA, biogeography.ord.1, type="samples", color="site", label="sample_name", shape="Location") + theme_bw()
+
+
+p1 = plot_ordination(biogeography_rarefy_noNA, biogeography.ord.1, type="samples", color="SO42...mM.", label="sample_name", shape="Location")
+
+sites <- data.frame(scores(biogeography.ord.1, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+head(sites) ##so you can see what element is needed
+sites$samplesite <- get_variable(biogeography_rarefy_noNA, "site") # making a column for SampleType
+sites$sample_location <- get_variable(biogeography_rarefy_noNA, "Location")
+sites$sample_name <- get_variable(biogeography_rarefy_noNA, "sample_name")
+
+
+env = data.frame(biogeography_rarefy_noNA@sam_data)
+nmds.envfit <- envfit(biogeography.ord.1$points, env = env, perm = 1000)
+vec.sp.df<-as.data.frame(nmds.envfit$vectors$arrows*sqrt(nmds.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=nmds.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.nmds <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+
+p1 <- ggplot(data = sites, aes(x = NMDS1, y = NMDS2))+ 
+  geom_point(data=sites, aes(x = NMDS1, y = NMDS2, color=samplesite, shape=sample_location),size = 2) + 
+  geom_text(label=sites$sample_name, size=2, aes(colour=sites$samplesite), check_overlap = TRUE)+
+  theme_bw() +
+  geom_segment(data=env.scores.nmds,aes(x=0,xend=MDS1,y=0,yend=MDS2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text(data=env.scores.nmds, aes(x=MDS1,y=MDS2,label=species),size=5)+
+  coord_fixed()
+
+
+biogeography.ord.2 = cca(numeric.otu~Chloride+Sulfate+TN+TIC+TS+Methane+TOC, numeric.data)
+sites <- data.frame(scores(biogeography.ord.2, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+head(sites) ##so you can see what element is needed
+sites$samplesite <- get_variable(biogeography_rarefy_noNA, "site") # making a column for SampleType
+sites$sample_location <- get_variable(biogeography_rarefy_noNA, "Location")
+sites$sample_name <- get_variable(biogeography_rarefy_noNA, "sample_name")
+
+
+cca.envfit <- envfit(biogeography.ord.2, env=numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(cca.envfit$vectors$arrows*sqrt(cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.01,]) #extracts relevant scores from envifit
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$species=="Chloride"|vec.sp.df$species=="Sulfate"|vec.sp.df$species=="TIC"|vec.sp.df$species=="TN"|vec.sp.df$species=="TS",])
+
+p5 <- ggplot(data = sites, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites, aes(x = CCA1, y = CCA2, color=samplesite),size = 2) + 
+  geom_text(label=sites$sample_name, size=2, aes(colour=samplesite), check_overlap = TRUE)+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text(data=env.scores.cca, aes(x=CCA1,y=CCA2,label=species),size=5)+labs(color="Site")
+
+  
+
+figure4 = ggarrange(p0,p5, labels=c("a","b"),common.legend=TRUE, legend="bottom")
+
+**Permutational Multivariate Analysis of Variance Using Distance Matrices**
+pma = adonis(numeric.otu ~ Chloride*Sulfate*Methane*TIC*TOC*TN*TS, data=numeric.data, permutation=1000)
+
+								Df SumsOfSqs MeanSqs F.Model
+Chloride                         1     1.504 1.50431  6.1690
+Sulfate                          1     1.719 1.71883  7.0488
+Methane                          1     0.509 0.50856  2.0856
+TIC                              1     2.117 2.11708  8.6819
+TOC                              1     1.377 1.37699  5.6469
+TN                               1     1.828 1.82757  7.4947
+TS                               1     1.177 1.17735  4
+ 									R2   Pr(>F)    
+Chloride                       0.02586 0.000999***
+Sulfate                        0.02954 0.000999***
+Methane                        0.00874 0.000999***
+TIC                            0.03639 0.000999***
+TOC                            0.02367 0.000999***
+TN                             0.03141 0.000999***
+TS                             0.02024 0.000999***
+**mantel test**
+numeric.otu = data.frame(biogeography_CSS_noNA@otu_table)
+numeric.otu = data.frame(t(numeric.otu))
+numeric.data = sample_data_numeric
+dfr2 = read.table(file="geodist.modified.env.csv", sep=",", header=TRUE, row.names=1)
+geodist = as.dist(dfr2)
+otu.dist = vegdist(numeric.otu, method="bray")
+mdat = dist(scale(numeric.data),"euclid")
+mantel(otu.dist, Ed.geodist, method="spear")
+mantel(otu.dist, mdat, method="spear")
+
+hyper.chloride = subset_samples(biogeography_CSS_noNA, site=="Iran-GG"|site!="Italy-PA")
+chloride.otu = data.frame(hyper.chloride@otu_table)
+geodist =  as.dist(spDists(as.matrix(hyper.chloride[c("Longitude", "Latitude")]), longlat=T),  diag=F, upper=F)
+
+chloride.dist = dist(scale(numeric.data$Chloride), "euclid")
+mantel(otu.dist, chloride.dist, method="spear")
+
+sulfate.dist = dist(scale(numeric.data$Sulfate), "euclid")
+mantel(otu.dist, sulfate.dist, method="spear")
+
+methane.dist = dist(scale(numeric.data$Methane), "euclid")
+mantel(otu.dist, methane.dist, method="spear")
+
+TIC.dist = dist(scale(numeric.data$TIC), "euclid")
+mantel(otu.dist, TIC.dist, method="spear")
+
+TOC.dist = dist(scale(numeric.data$TOC), "euclid")
+mantel(otu.dist, TOC.dist, method="spear")
+
+TN.dist = dist(scale(numeric.data$TN), "euclid")
+mantel(otu.dist, TN.dist, method="spear")
+
+TS.dist = dist(scale(numeric.data$TS), "euclid")
+mantel(otu.dist, TS.dist, method="spear")
+
+mantel.partial(otu.dist, mdat, geodist, method="spear")
+
+**plot composition**
+subset_proteobacteria = subset_taxa(biogeography.merge.proportion, phylum=="Proteobacteria")
+
+proteobacteria = tax_glom(subset_proteobacteria,taxrank="class")
+proteobacteria = psmelt(proteobacteria)
+
+plot = data.frame(matrix(NA,nrow(proteobacteria),3))  
+colnames(plot) = c("Sample", "phylum", "Abundance")
+plot$Sample = proteobacteria$Sample
+plot$phylum = proteobacteria$class
+plot$Abundance = proteobacteria$Abundance
+plot = lapply(plot, function(x) {gsub("Deltaproteobacteria", "Proteo_Delta", x)})
+plot = lapply(plot, function(x) {gsub("Gammaproteobacteria", "Proteo_Gamma", x)})
+plot = lapply(plot, function(x) {gsub("Alphaproteobacteria", "Proteo_Alpha", x)})
+plot = lapply(plot, function(x) {gsub("Betaproteobacteria", "Proteo_Beta", x)})
+plot = lapply(plot, function(x) {gsub("Zetaproteobacteria", "Proteo_Zeta", x)})
+plot = lapply(plot, function(x) {gsub("Proteobacteria_unclassified", "Proteo_unclassified", x)})
+plot$Abundance = as.numeric(plot$Abundance)
+plot = data.frame(plot)
+
+phylum = tax_glom(biogeography.merge.proportion,taxrank = "phylum")
+phylum = psmelt(phylum)
+phylum_noproteo = subset(phylum , phylum!="Proteobacteria")
+
+dat <- data.table(phylum_noproteo)
+# convert Phylum to a character vector from a factor because R
+dat$phylum <- as.character(dat$phylum)
+# group dataframe by Phylum, calculate median rel. abundance
+dat[, median := median(Abundance, na.rm = TRUE), 
+    by = "phylum"]
+# Change name to remainder of Phylum less than 2.5%
+dat[(Abundance <= 0.025), phylum := "Remainder"]
+	
+
+plot2 = data.frame(matrix(NA,nrow(dat),3))
+colnames(plot2) = colnames(plot)
+plot2$Sample = dat$Sample
+plot2$Abundance = dat$Abundance
+plot2$phylum = dat$phylum
+
+plot.merge = bind_rows(plot, plot2)
+
+phylum_colors <- c("#4b5410", "#5F7FC7", "orange","#ff4d00", "#0000ff", "#CD9BCD",
+"#AD6F3B", "#673770","#D14285", "#652926", "#FF0013", "#8569D5", "#5E738F",
+"#D1A33D", "#FFFF00","#8A7C64", "#000000", "#bed878", "#45E994", "#2D9961", "#79C1D8","#314CB6"
+,"#00d8ff","#C0C0C0","#ff6b00","#FFCC99")
+
+p4 = ggplot(plot.merge, aes(x=Sample, y=Abundance, fill=factor(phylum, levels=c("Acetothermia","Acidobacteria","Actinobacteria","Atribacteria","Bacteroidetes","Chloroflexi","Cloacimonetes","Cyanobacteria","Deferribacteres","Firmicutes","Fusobacteria","Nitrospirae",
+"Patescibacteria","Planctomycetes","Proteo_Alpha","Proteo_Delta","Proteo_Gamma","Proteo_Zeta","Proteo_unclassified","Spirochaetes",
+"Tenericutes","Bacteria_unclassified","Euryarchaeota","Hadesarchaeaeota","Nanoarchaeaeota","Remainder"))))
+p4 = p4 + geom_bar(stat="identity", position="stack", colour="black") + scale_fill_manual(values = phylum_colors,name="Phylum")+theme_bw()+
+labs(x="Terrestrial mud volcano")
+p4 = p4 +  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5, size=12, colour="black"), axis.text.y= element_text(size=12, color="black"),
+legend.position="bottom", legend.key.size=unit(0.5,"cm"),legend.title=element_text(size=12, color="black"),legend.text=element_text(size=10, color="black"),axis.title.y=element_text(size=14, color="black"), axis.title.x=element_text(size=14, color="black"))+
+guides(shape = guide_legend(override.aes = list(size = 5)))
+print(p4)
+
+**habitat similarity**
+
+preproc1 <- preProcess(sample_data_numeric, method=c("range"))
+norm1 <- predict(preproc1, sample_data_numeric)
+mdat = vegdist(sample_data_numeric, method = "euclidean")
+dist.similarity = function(x) {(1-(x/max(x)))}
+Ed.Ed = dist.similarity(mdat)
+Ed = read.table("geodist.Ed.csv", sep=",", header=TRUE)
+Ed$Ed = vegdist(norm1, method = "euclidean")
+Ed$Ed = dist.similarity(Ed$Ed)
+write.table(file="biogeography-habitat-Ed.csv", Ed, sep=",", col.names=NA)
+Ed.geodist <- graph.data.frame(Ed, directed=FALSE)
+Ed.geodist = get.adjacency(Ed.geodist, attr="geodist", sparse=FALSE)
+Ed.geodist = as.dist(Ed.geodist)
+Ed.Ed = 1- Ed.Ed
+mantel(log(Ed.geodist,10), Ed.Ed, method="pearson", permutations=10000)
+
+Ed = read.table("biogeography-habitat-Ed.csv", sep=",", header=TRUE)
+lm_eqn <- function(df){
+    m <- lm(Ed ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x+"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+
+habitat = ggplot(Ed, aes(x=log(geodist,10), y=Ed)) +
+	 geom_point(size=0.8) +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression('Habitat similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))
+figure2 = ggarrange(habitat, p4, ncol = 2, widths=c(1,2),labels = c("a", "b"))
+
+**Figure5**
+D1 = data.frame(CSS.nofeatures@otu_table)
+D1 = t(D1)
+tmp = matrix(as.numeric(as.matrix(D1), 0), nrow(D1)) #binary table
+sample_data = data.frame(CSS.nofeatures@sam_data)
+DIST.all = read.table(file="DIST.all.modified.csv", sep=",", header=TRUE)
+geodist <- graph.data.frame(DIST.all, directed=FALSE)
+geodist = get.adjacency(geodist, attr="geodist", sparse=FALSE)
+geodist = as.dist(geodist)
+DIST.all$shared.otu = 100*(1-as.vector(vegdist(tmp, "jacc", diag = F, upper = F))) # %shared OTUs
+DIST.all$sor = 1-dsvdis(D1, index="sorensen", diag=F, upper=F)+0.001
+sorensen = 1-dsvdis(D1, index="sorensen", diag=F, upper=F)+0.001
+shared.otu = vegdist(D1, "jacc", diag = F, upper = F)
+mantel(shared.otu, log(geodist, 10), method="pearson", permutations=10000)
+
+sorensen = 1- sorensen
+mantel(log(sorensen,10), log(geodist, 10),method="pearson", permutations=10000)
+
+D2 = data.frame(biogeography_CSS_noNA@otu_table)
+D2 = t(D2)
+tmp2 = matrix(as.numeric(as.matrix(D2), 0), nrow(D2))
+Ed$sor = 1-dsvdis(tmp2, index="sorensen", diag=F, upper=F)+0.001
+sorensen.ed = 1-dsvdis(D2, index="sorensen", diag=F, upper=F)+0.001
+write.table(file="Ed.combine.CSS.csv", sep=",", col.names=NA, Ed)
+
+mantel(sorensen.ed, Ed.Ed, method="pearson", permutations=10000)
+
+**ecodist**
+mantel in ecodist could be used to calculate significance of mantel test from both positive and negative values of r
+
+**plot**
+lm_eqn <- function(df){
+    m <- lm(shared.otu ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x+"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+shared.asv = ggplot(DIST.all, aes(x=log(geodist,10), y=shared.otu)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression('% shared ASV between samples'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_x_continuous(limit=c(-6,5), breaks= seq(-6,5, by=1), expand=c(0,0)) +
+	scale_y_continuous(limit=c(-1,70), breaks= seq(0,70, by=10), expand=c(0,0)) 
+
+summary(lm(shared.otu~log(geodist,10), DIST.all))
+
+lm_eqn <- function(df){
+    m <- lm(log(sor,10) ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+
+sor.similarity = ggplot(DIST.all, aes(x=log(geodist,10), y=log(sor,10))) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression(log[10]~'Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+	scale_x_continuous(limit=c(-6,5), breaks= seq(-6,5, by=1), expand=c(0,0)) +
+	scale_y_continuous(limit=c(-3.1,0), breaks= seq(-3,0, by=0.5), expand=c(0,0)) 
+
+
+summary(lm(log(sor, 10)~log(geodist, 10), DIST.all))
+
+lm_eqn <- function(df){
+    m <- lm(sor~Ed, df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+
+sor.habitat = ggplot(Ed, aes(x=Ed, y=sor)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression('Habitat similarity'), y=expression('Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+	scale_x_continuous(limit=c(0,1.01), breaks= seq(0,1, by=0.2), expand=c(0,0)) +
+	scale_y_continuous(limit=c(-0.1,0.7), breaks= seq(-0.1,0.7, by=0.2), expand=c(0,0)) 
+
+summary(lm(sor~Ed, Ed))
+
+figure5 = ggarrange(shared.asv, sor.similarity, sor.habitat, ncol = 3,labels = c("a", "b","c"))
+
+**Figure S9 distance decay within / across core**
+DIST.across = read.table(file='DIST.across.csv', sep=",", header=TRUE)
+Ed.across = read.table(file="Ed.across.csv", sep=",", header=TRUE)
+
+DIST.across.shared.otu = DIST.across[,c(1,2,5)]
+DIST.across.shared.otu <- graph.data.frame(DIST.across.shared.otu, directed=FALSE)
+DIST.across.shared.otu = get.adjacency(DIST.across.shared.otu , attr="shared.otu", sparse=FALSE)
+DIST.across.shared.otu = as.dist(DIST.across.shared.otu )
+
+DIST.across.geodist = DIST.across[,1:3]
+DIST.across.geodist <- graph.data.frame(DIST.across.geodist, directed=FALSE)
+DIST.across.geodist = get.adjacency(DIST.across.geodist , attr="geodist", sparse=FALSE)
+DIST.across.geodist = as.dist(DIST.across.geodist )
+DIST.across.shared.otu = 1 - DIST.across.shared.otu
+
+DIST.across.sor = DIST.across[,c(1,2,4)]
+DIST.across.sor <- graph.data.frame(DIST.across.sor, directed=FALSE)
+DIST.across.sor = get.adjacency(DIST.across.sor , attr="sor", sparse=FALSE)
+DIST.across.sor = as.dist(DIST.across.sor )
+DIST.across.sor = 1 - DIST.across.sor
+
+Ed.across.Ed = Ed.across[,c(1,2,4)]
+Ed.across.Ed <- graph.data.frame(Ed.across.Ed, directed=FALSE)
+Ed.across.Ed = get.adjacency(Ed.across.Ed , attr="Ed", sparse=FALSE)
+Ed.across.Ed = as.dist(Ed.across.Ed )
+
+Ed.across.sor = Ed.across[,c(1,2,5)]
+Ed.across.sor <- graph.data.frame(Ed.across.sor, directed=FALSE)
+Ed.across.sor = get.adjacency(Ed.across.sor , attr="sor", sparse=FALSE)
+Ed.across.sor = as.dist(Ed.across.sor )
+
+mantel(DIST.across.shared.otu, log(DIST.across.geodist,10), na.rm=TRUE, permutations=10000, method="pearson")
+mantel(log(DIST.across.sor,10), log(DIST.across.geodist,10), na.rm=TRUE, permutations=10000, method="pearson")
+mantel(Ed.across.Ed, Ed.across.sor, na.rm=TRUE, permutations=10000, method="pearson")
+
+lm_eqn <- function(df){
+    m <- lm(shared.otu ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x+"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+shared.across.asv = ggplot(DIST.across, aes(x=log(geodist,10), y=shared.otu)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression('% shared ASV between samples'))+	
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+ 
+			scale_x_continuous(lim=c(-3,4.5),expand=c(0,0),breaks=c(-3,-2,-1,0,1,2,3,4,4.5))+
+			scale_y_continuous(lim=c(0,40), expand=c(0,0))
+
+lm_eqn <- function(df){
+    m <- lm(log(sor,10) ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+sor.across.similarity = ggplot(DIST.across, aes(x=log(geodist,10), y=log(sor,10))) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression(log[10]~'Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_y_continuous(breaks=seq(0.5,-3.5,-1),lim=c(-3.5,0.5), expand=c(0,0))+
+			scale_x_continuous(lim=c(-3,4.5),expand=c(0,0),breaks=c(-3,-2,-1,0,1,2,3,4,4.5))
+
+lm_eqn <- function(df){
+    m <- lm(sor~Ed, df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+
+sor.across.habitat = ggplot(Ed.across, aes(x=Ed, y=sor)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression('Habitat similarity'), y=expression('Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_y_continuous(breaks=seq(0,0.6,0.1),lim=c(0,0.6), expand=c(0,0))+
+			scale_x_continuous(lim=c(0,1),expand=c(0,0))
+
+
+## comparisons within each sediment core
+DIST.within = read.table(file='DIST.withinsite.csv', sep=",", header=TRUE)
+Ed.within = read.table("Ed.withinsite.csv", sep=",", header=TRUE)
+DIST.within.shared.otu = DIST.within[,c(1,2,5)]
+DIST.within.shared.otu <- graph.data.frame(DIST.within.shared.otu, directed=FALSE)
+DIST.within.shared.otu = get.adjacency(DIST.within.shared.otu , attr="shared.otu", sparse=FALSE)
+DIST.within.shared.otu = as.dist(DIST.within.shared.otu )
+
+DIST.within.geodist = DIST.within[,1:3]
+DIST.within.geodist <- graph.data.frame(DIST.within.geodist, directed=FALSE)
+DIST.within.geodist = get.adjacency(DIST.within.geodist , attr="geodist", sparse=FALSE)
+DIST.within.geodist = as.dist(DIST.within.geodist )
+
+DIST.within.sor = DIST.within[,c(1,2,4)]
+DIST.within.sor <- graph.data.frame(DIST.within.sor, directed=FALSE)
+DIST.within.sor = get.adjacency(DIST.within.sor , attr="sor", sparse=FALSE)
+DIST.within.sor = as.dist(DIST.within.sor )
+
+Ed.within.Ed = Ed.within[,c(1,2,4)]
+Ed.within.Ed <- graph.data.frame(Ed.within.Ed, directed=FALSE)
+Ed.within.Ed = get.adjacency(Ed.within.Ed , attr="Ed", sparse=FALSE)
+Ed.within.Ed = as.dist(Ed.within.Ed )
+
+Ed.within.sor = Ed.within[,c(1,2,5)]
+Ed.within.sor <- graph.data.frame(Ed.within.sor, directed=FALSE)
+Ed.within.sor = get.adjacency(Ed.within.sor , attr="sor", sparse=FALSE)
+Ed.within.sor = as.dist(Ed.within.sor )
+
+Ed.within.geodist = Ed.within[,1:3]
+Ed.within.geodist <- graph.data.frame(Ed.within.geodist, directed=FALSE)
+Ed.within.geodist = get.adjacency(Ed.within.geodist , attr="geodist", sparse=FALSE)
+Ed.within.geodist = as.dist(Ed.within.geodist )
+
+mantel(log(DIST.within.geodist,10), DIST.within.shared.otu, na.rm=TRUE, permutations=10000, method="pearson")
+mantel(log(DIST.within.sor,10), log(DIST.within.geodist,10), na.rm=TRUE, permutations=10000, method="pearson")
+mantel(Ed.within.Ed, Ed.within.sor, na.rm=TRUE, permutations=10000, method="pearson")
+mantel(Ed.within.Ed, log(Ed.within.geodist, 10), na.rm=TRUE, permutations=10000, method="pearson")
+lm_eqn <- function(df){
+    m <- lm(shared.otu ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x+"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+shared.within.asv = ggplot(DIST.within, aes(x=log(geodist,10), y=shared.otu)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression('% shared ASV between samples'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+ 
+			scale_x_continuous(lim=c(-6,-2),expand=c(0,0),breaks=c(-6,-5.5,-5,-4.5,-4,-3.5,-3,-2.5,-2))+
+			scale_y_continuous(lim=c(0,70), breaks=seq(0,70,10),expand=c(0,0))
+			
+lm_eqn <- function(df){
+    m <- lm(log(sor,10) ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+sor.within.similarity = ggplot(DIST.within, aes(x=log(geodist,10), y=log(sor,10))) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression(log[10]~'Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_x_continuous(lim=c(-6,-2),expand=c(0,0),breaks=c(-6,-5.5,-5,-4.5,-4,-3.5,-3,-2.5,-2))+
+			scale_y_continuous(lim=c(-2,0), breaks=seq(0,-2,-0.5),expand=c(0,0))
+
+lm_eqn <- function(df){
+    m <- lm(sor~Ed, df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+
+sor.within.habitat = ggplot(Ed.within, aes(x=Ed, y=sor)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression('Habitat similarity'), y=expression('Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_y_continuous(breaks=seq(0,0.7,0.1),lim=c(0,0.7), expand=c(0,0))+
+			scale_x_continuous(lim=c(0,1),expand=c(0,0))
+
+figures9 = ggarrange(shared.across.asv, sor.across.similarity, sor.across.habitat, shared.within.asv, sor.within.similarity, sor.within.habitat, 
+ncol = 3,nrow=2, labels = c("a", "b","c","d","e","f"))
+
+**Supplementary Figure S4**
+FigureS4 = plot_richness(biogeography_rarefy,x="site", measures=c("Observed","Shannon","Chao1"))
+
+**ANOSIM**
+D1.dist=vegdist(D1, "bray")
+sample.env = data.frame(CSS@sam_data)
+FigureS8 = anosim(D1, sample.env$site, permutations=1000)
+summary(FigureS8)
+plot(FigureS8)
+dev.off()
+
+**CCAA_sites**
+axis.expl <- function(mod, axes = 1:2) {
+  
+  if(is.null(mod$CCA)) {
+    sapply(axes, function(i) {
+    100*mod$CA$eig[i]/mod$tot.chi
+    })
+  } else {
+    sapply(axes, function(i) {
+    100*mod$CCA$eig[i]/mod$tot.chi
+    })
+  }   
+}
+
+AK = subset_samples(biogeography_CSS_noNA, core=="Georgia-AK03")
+AK = prune_taxa(taxa_sums(AK)>0, AK)
+AK.otu = data.frame(AK@otu_table)
+AK.otu = data.frame(t(AK.otu))
+AK.numeric.data = data.frame(AK@sam_data)
+AK.cca.ord = cca(AK.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, AK.numeric.data)
+sites.AK <- data.frame(scores(AK.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.AK$samplesite <- get_variable(AK, "site") # making a column for SampleType
+sites.AK$sample_location <- get_variable(AK, "Location")
+sites.AK$sample_name <- get_variable(AK, "sample_name")
+sites.AK$Depth <- get_variable(AK, "Depth")
+labs <- axis.expl(AK.cca.ord)
+AK.cca.envfit <- envfit(AK.cca.ord, env=AK.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(AK.cca.envfit$vectors$arrows*sqrt(AK.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=AK.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pAK.cca <- ggplot(data = sites.AK, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.AK, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.AK, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  theme_bw() +
+  scale_x_continuous(lim=c(-3,1),expand=c(0,0)) +scale_y_continuous(lim=c(-1.5, 3.5),expand=c(0,0))+
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=0.5)+
+  ggtitle("Georgia-AK03")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+  
+GJ = subset_samples(biogeography_CSS_noNA, core=="Georgia-GJ01")
+GJ = prune_taxa(taxa_sums(GJ)>0, GJ)
+GJ.otu = data.frame(GJ@otu_table)
+GJ.otu = data.frame(t(GJ.otu))
+GJ.numeric.data = data.frame(GJ@sam_data)
+GJ.cca.ord = cca(GJ.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, GJ.numeric.data)
+sites.GJ <- data.frame(scores(GJ.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.GJ$samplesite <- get_variable(GJ, "site") # mGJing a column for SampleType
+sites.GJ$sample_location <- get_variable(GJ, "Location")
+sites.GJ$sample_name <- get_variable(GJ, "sample_name")
+sites.GJ$Depth <- get_variable(GJ, "Depth")
+labs <- axis.expl(GJ.cca.ord)
+GJ.cca.envfit <- envfit(GJ.cca.ord, env=GJ.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(GJ.cca.envfit$vectors$arrows*sqrt(GJ.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=GJ.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pGJ.cca <- ggplot(data = sites.GJ, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.GJ, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.GJ, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-1.5, 3.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=0.5)+
+  ggtitle("Georgia-GJ01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+QK = subset_samples(biogeography_CSS_noNA, core=="Georgia-QK01")
+QK = prune_taxa(taxa_sums(QK)>0, QK)
+QK.otu = data.frame(QK@otu_table)
+QK.otu = data.frame(t(QK.otu))
+QK.numeric.data = data.frame(QK@sam_data)
+QK.cca.ord = cca(QK.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, QK.numeric.data)
+sites.QK <- data.frame(scores(QK.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.QK$samplesite <- get_variable(QK, "site") # mQKing a column for SampleType
+sites.QK$sample_location <- get_variable(QK, "Location")
+sites.QK$sample_name <- get_variable(QK, "sample_name")
+sites.QK$Depth <- get_variable(QK, "Depth")
+labs <- axis.expl(QK.cca.ord)
+QK.cca.envfit <- envfit(QK.cca.ord, env=QK.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(QK.cca.envfit$vectors$arrows*sqrt(QK.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=QK.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.06,]) #extracts relevant scores from envifit
+pQK.cca <- ggplot(data = sites.QK, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.QK, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.QK, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.,3),expand=c(0,0)) +scale_y_continuous(lim=c(-1.5,3.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=-0.2)+
+  ggtitle("Georgia-QK01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+GG = subset_samples(biogeography_CSS_noNA, core=="Iran-GG01")
+GG = prune_taxa(taxa_sums(GG)>0, GG)
+GG.otu = data.frame(GG@otu_table)
+GG.otu = data.frame(t(GG.otu))
+GG.numeric.data = data.frame(GG@sam_data)
+GG.cca.ord = cca(GG.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, GG.numeric.data)
+sites.GG <- data.frame(scores(GG.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.GG$samplesite <- get_variable(GG, "site") # mGGing a column for SampleType
+sites.GG$sample_location <- get_variable(GG, "Location")
+sites.GG$sample_name <- get_variable(GG, "sample_name")
+sites.GG$Depth <- get_variable(GG, "Depth")
+labs <- axis.expl(GG.cca.ord)
+GG.cca.envfit <- envfit(GG.cca.ord, env=GG.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(GG.cca.envfit$vectors$arrows*sqrt(GG.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=GG.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pGG.cca <- ggplot(data = sites.GG, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.GG, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.GG, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,2),expand=c(0,0)) +scale_y_continuous(lim=c(-1.5,3.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=1, vjust=-0.8)+
+  ggtitle("Iran-GG")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+TA = subset_samples(biogeography_CSS_noNA, core=="Iran-TA01")
+TA = prune_taxa(taxa_sums(TA)>0, TA)
+TA.otu = data.frame(TA@otu_table)
+TA.otu = data.frame(t(TA.otu))
+TA.numeric.data = data.frame(TA@sam_data)
+TA.cca.ord = cca(TA.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, TA.numeric.data)
+sites.TA <- data.frame(scores(TA.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.TA$samplesite <- get_variable(TA, "site") # mTAing a column for SampleType
+sites.TA$sample_location <- get_variable(TA, "Location")
+sites.TA$sample_name <- get_variable(TA, "sample_name")
+sites.TA$Depth <- get_variable(TA, "Depth")
+labs <- axis.expl(TA.cca.ord)
+TA.cca.envfit <- envfit(TA.cca.ord, env=TA.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(TA.cca.envfit$vectors$arrows*sqrt(TA.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=TA.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pTA.cca <- ggplot(data = sites.TA, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.TA, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.TA, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-2.5,2.5),expand=c(0,0))+
+  theme_bw() +
+  ggtitle("Iran-TA01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SH = subset_samples(biogeography_CSS_noNA, core=="Myanmar-SH01")
+SH = prune_taxa(taxa_sums(SH)>0, SH)
+SH.otu = data.frame(SH@otu_table)
+SH.otu = data.frame(t(SH.otu))
+SH.numeric.data = data.frame(SH@sam_data)
+SH.cca.ord = cca(SH.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SH.numeric.data)
+sites.SH <- data.frame(scores(SH.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SH$samplesite <- get_variable(SH, "site") # mSHing a column for SampleType
+sites.SH$sample_location <- get_variable(SH, "Location")
+sites.SH$sample_name <- get_variable(SH, "sample_name")
+sites.SH$Depth <- get_variable(SH, "Depth")
+labs <- axis.expl(SH.cca.ord)
+SH.cca.envfit <- envfit(SH.cca.ord, env=SH.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SH.cca.envfit$vectors$arrows*sqrt(SH.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SH.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSH.cca <- ggplot(data = sites.SH, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SH, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SH, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1,2),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  ggtitle("Myanmar-SH01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SI = subset_samples(biogeography_CSS_noNA, core=="Myanmar-SI02")
+SI = prune_taxa(taxa_sums(SI)>0, SI)
+SI.otu = data.frame(SI@otu_table)
+SI.otu = data.frame(t(SI.otu))
+SI.numeric.data = data.frame(SI@sam_data)
+SI.cca.ord = cca(SI.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SI.numeric.data)
+sites.SI <- data.frame(scores(SI.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SI$samplesite <- get_variable(SI, "site") # mSIing a column for SampleType
+sites.SI$sample_location <- get_variable(SI, "Location")
+sites.SI$sample_name <- get_variable(SI, "sample_name")
+sites.SI$Depth <- get_variable(SI, "Depth")
+labs <- axis.expl(SI.cca.ord)
+SI.cca.envfit <- envfit(SI.cca.ord, env=SI.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SI.cca.envfit$vectors$arrows*sqrt(SI.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SI.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSI.cca <- ggplot(data = sites.SI, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SI, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SI, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2,2),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  ggtitle("Myanmar-SI02")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+AR = subset_samples(biogeography_CSS_noNA, core=="Italy-AR01")
+AR = prune_taxa(taxa_sums(AR)>0, AR)
+AR.otu = data.frame(AR@otu_table)
+AR.otu = data.frame(t(AR.otu))
+AR.numeric.data = data.frame(AR@sam_data)
+AR.cca.ord = cca(AR.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, AR.numeric.data)
+sites.AR <- data.frame(scores(AR.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.AR$samplesite <- get_variable(AR, "site") # mARing a column for SampleType
+sites.AR$sample_location <- get_variable(AR, "Location")
+sites.AR$sample_name <- get_variable(AR, "sample_name")
+sites.AR$Depth <- get_variable(AR, "Depth")
+labs <- axis.expl(AR.cca.ord)
+AR.cca.envfit <- envfit(AR.cca.ord, env=AR.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(AR.cca.envfit$vectors$arrows*sqrt(AR.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=AR.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pAR.cca <- ggplot(data = sites.AR, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.AR, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.AR, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+   geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=1.6)+
+  ggtitle("Italy-AR01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+COM = subset_samples(biogeography_CSS_noNA, core=="Italy-COM01")
+COM = prune_taxa(taxa_sums(COM)>0, COM)
+COM.otu = data.frame(COM@otu_table)
+COM.otu = data.frame(t(COM.otu))
+COM.numeric.data = data.frame(COM@sam_data)
+COM.cca.ord = cca(COM.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, COM.numeric.data)
+sites.COM <- data.frame(scores(COM.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.COM$samplesite <- get_variable(COM, "site") # mCOMing a column for SampleType
+sites.COM$sample_location <- get_variable(COM, "Location")
+sites.COM$sample_name <- get_variable(COM, "sample_name")
+sites.COM$Depth <- get_variable(COM, "Depth")
+labs <- axis.expl(COM.cca.ord)
+COM.cca.envfit <- envfit(COM.cca.ord, env=COM.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(COM.cca.envfit$vectors$arrows*sqrt(COM.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=COM.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pCOM.cca <- ggplot(data = sites.COM, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.COM, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.COM, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-2.5,2.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+   geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=1, vjust=-2, point.padding = NA)+
+  ggtitle("Italy-COM01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+PA01 = subset_samples(biogeography_CSS_noNA, core=="Italy-PA01")
+PA01 = prune_taxa(taxa_sums(PA01)>0, PA01)
+PA01.otu = data.frame(PA01@otu_table)
+PA01.otu = data.frame(t(PA01.otu))
+PA01.numeric.data = data.frame(PA01@sam_data)
+PA01.cca.ord = cca(PA01.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, PA01.numeric.data)
+sites.PA01 <- data.frame(scores(PA01.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.PA01$samplesite <- get_variable(PA01, "site") # mPA01ing a column for SampleType
+sites.PA01$sample_location <- get_variable(PA01, "Location")
+sites.PA01$sample_name <- get_variable(PA01, "sample_name")
+sites.PA01$Depth <- get_variable(PA01, "Depth")
+labs <- axis.expl(PA01.cca.ord)
+PA01.cca.envfit <- envfit(PA01.cca.ord, env=PA01.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(PA01.cca.envfit$vectors$arrows*sqrt(PA01.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=PA01.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pPA01.cca <- ggplot(data = sites.PA01, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.PA01, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.PA01, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2,2),expand=c(0,0)) +scale_y_continuous(lim=c(-2.5,2.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.4)+
+  ggtitle("Italy-PA01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+PA02 = subset_samples(biogeography_CSS_noNA, core=="Italy-PA02")
+PA02 = prune_taxa(taxa_sums(PA02)>0, PA02)
+PA02.otu = data.frame(PA02@otu_table)
+PA02.otu = data.frame(t(PA02.otu))
+PA02.numeric.data = data.frame(PA02@sam_data)
+PA02.cca.ord = cca(PA02.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, PA02.numeric.data)
+sites.PA02 <- data.frame(scores(PA02.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.PA02$samplesite <- get_variable(PA02, "site") # mPA02ing a column for SampleType
+sites.PA02$sample_location <- get_variable(PA02, "Location")
+sites.PA02$sample_name <- get_variable(PA02, "sample_name")
+sites.PA02$Depth <- get_variable(PA02, "Depth")
+labs <- axis.expl(PA02.cca.ord)
+PA02.cca.envfit <- envfit(PA02.cca.ord, env=PA02.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(PA02.cca.envfit$vectors$arrows*sqrt(PA02.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=PA02.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pPA02.cca <- ggplot(data = sites.PA02, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.PA02, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.PA02, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2,1.5),expand=c(0,0)) +scale_y_continuous(lim=c(-2.5,2.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.4)+
+  ggtitle("Italy-PA02")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+LGH = subset_samples(biogeography_CSS_noNA, core=="Taiwan-LGH03")
+LGH = prune_taxa(taxa_sums(LGH)>0, LGH)
+LGH.otu = data.frame(LGH@otu_table)
+LGH.otu = data.frame(t(LGH.otu))
+LGH.numeric.data = data.frame(LGH@sam_data)
+LGH.cca.ord = cca(LGH.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, LGH.numeric.data)
+sites.LGH <- data.frame(scores(LGH.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.LGH$samplesite <- get_variable(LGH, "site") # mLGHing a column for SampleType
+sites.LGH$sample_location <- get_variable(LGH, "Location")
+sites.LGH$sample_name <- get_variable(LGH, "sample_name")
+sites.LGH$Depth <- get_variable(LGH, "Depth")
+labs <- axis.expl(LGH.cca.ord)
+LGH.cca.envfit <- envfit(LGH.cca.ord, env=LGH.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(LGH.cca.envfit$vectors$arrows*sqrt(LGH.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=LGH.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pLGH.cca <- ggplot(data = sites.LGH, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.LGH, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.LGH, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-3,1.5),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.5, vjust=-0.9)+
+  ggtitle("Taiwan-LGH03")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SYNHC4 = subset_samples(biogeography_CSS_noNA, core=="Taiwan-SYNH02-C4")
+SYNHC4 = prune_taxa(taxa_sums(SYNHC4)>0, SYNHC4)
+SYNHC4.otu = data.frame(SYNHC4@otu_table)
+SYNHC4.otu = data.frame(t(SYNHC4.otu))
+SYNHC4.numeric.data = data.frame(SYNHC4@sam_data)
+SYNHC4.cca.ord = cca(SYNHC4.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SYNHC4.numeric.data)
+sites.SYNHC4 <- data.frame(scores(SYNHC4.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SYNHC4$samplesite <- get_variable(SYNHC4, "site") # mSYNHC4ing a column for SampleType
+sites.SYNHC4$sample_location <- get_variable(SYNHC4, "Location")
+sites.SYNHC4$sample_name <- get_variable(SYNHC4, "sample_name")
+sites.SYNHC4$Depth <- get_variable(SYNHC4, "Depth")
+labs <- axis.expl(SYNHC4.cca.ord)
+SYNHC4.cca.envfit <- envfit(SYNHC4.cca.ord, env=SYNHC4.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SYNHC4.cca.envfit$vectors$arrows*sqrt(SYNHC4.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SYNHC4.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSYNHC4.cca <- ggplot(data = sites.SYNHC4, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SYNHC4, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SYNHC4, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2.5,3),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=0.5)+
+  ggtitle("Taiwan-SYNH02C4")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SYNHC11 = subset_samples(biogeography_CSS_noNA, core=="Taiwan-SYNH02-C11")
+SYNHC11 = prune_taxa(taxa_sums(SYNHC11)>0, SYNHC11)
+SYNHC11.otu = data.frame(SYNHC11@otu_table)
+SYNHC11.otu = data.frame(t(SYNHC11.otu))
+SYNHC11.numeric.data = data.frame(SYNHC11@sam_data)
+SYNHC11.cca.ord = cca(SYNHC11.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SYNHC11.numeric.data)
+sites.SYNHC11 <- data.frame(scores(SYNHC11.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SYNHC11$samplesite <- get_variable(SYNHC11, "site") # mSYNHC11ing a column for SampleType
+sites.SYNHC11$sample_location <- get_variable(SYNHC11, "Location")
+sites.SYNHC11$sample_name <- get_variable(SYNHC11, "sample_name")
+sites.SYNHC11$Depth <- get_variable(SYNHC11, "Depth")
+labs <- axis.expl(SYNHC11.cca.ord)
+SYNHC11.cca.envfit <- envfit(SYNHC11.cca.ord, env=SYNHC11.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SYNHC11.cca.envfit$vectors$arrows*sqrt(SYNHC11.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SYNHC11.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSYNHC11.cca <- ggplot(data = sites.SYNHC11, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SYNHC11, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SYNHC11, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,3.5),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=0.5)+
+  ggtitle("Taiwan-SYNH02C11")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+DSZ = subset_samples(biogeography_CSS_noNA, core=="China-DSZ01")
+DSZ = prune_taxa(taxa_sums(DSZ)>0, DSZ)
+DSZ.otu = data.frame(DSZ@otu_table)
+DSZ.otu = data.frame(t(DSZ.otu))
+DSZ.numeric.data = data.frame(DSZ@sam_data)
+DSZ.cca.ord = cca(DSZ.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, DSZ.numeric.data)
+sites.DSZ <- data.frame(scores(DSZ.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.DSZ$samplesite <- get_variable(DSZ, "site") # mDSZing a column for SampleType
+sites.DSZ$sample_location <- get_variable(DSZ, "Location")
+sites.DSZ$sample_name <- get_variable(DSZ, "sample_name")
+sites.DSZ$Depth <- get_variable(DSZ, "Depth")
+labs <- axis.expl(DSZ.cca.ord)
+DSZ.cca.envfit <- envfit(DSZ.cca.ord, env=DSZ.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(DSZ.cca.envfit$vectors$arrows*sqrt(DSZ.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=DSZ.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pDSZ.cca <- ggplot(data = sites.DSZ, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.DSZ, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.DSZ, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,2),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.5, vjust=-0.5)+
+  ggtitle("China-DSZ01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SM = subset_samples(biogeography_CSS_noNA, core=="China-SM22")
+SM = prune_taxa(taxa_sums(SM)>0, SM)
+SM.otu = data.frame(SM@otu_table)
+SM.otu = data.frame(t(SM.otu))
+SM.numeric.data = data.frame(SM@sam_data)
+SM.cca.ord = cca(SM.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SM.numeric.data)
+sites.SM <- data.frame(scores(SM.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SM$samplesite <- get_variable(SM, "site") # mSMing a column for SampleType
+sites.SM$sample_location <- get_variable(SM, "Location")
+sites.SM$sample_name <- get_variable(SM, "sample_name")
+sites.SM$Depth <- get_variable(SM, "Depth")
+labs <- axis.expl(SM.cca.ord)
+SM.cca.envfit <- envfit(SM.cca.ord, env=SM.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SM.cca.envfit$vectors$arrows*sqrt(SM.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SM.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSM.cca <- ggplot(data = sites.SM, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SM, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SM, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.5)+
+  ggtitle("China-SM22")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+FigureS7 = ggarrange(pAK.cca,pQK.cca,pGJ.cca,pGG.cca,pTA.cca,pCOM.cca,pPA01.cca,pPA02.cca,pAR.cca,pSH.cca,pSI.cca,pSM.cca,pDSZ.cca,pSYNHC4.cca, pSYNHC11.cca,pLGH.cca,ncol=4,nrow=4)
