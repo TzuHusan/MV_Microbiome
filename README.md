@@ -13,7 +13,7 @@ Files overview
 │   ├── Dist.matrix.csv
 │   ├── DIST.withinsite.csv
 │   ├──	Ed.withinsite.csv
-│	└── biogeography-tree.tre
+│  	└── biogeography-tree.tre
 ├── README.md          			 # Overview of the repo
 ├── biogeography-analysis.txt    # R script used to analyze sequences and produce plots in the paper.
 ├── biogeography-env-plot.txt        # R script used to produce environmental plots
