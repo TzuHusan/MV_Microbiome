@@ -4,7 +4,6 @@
 # Overview
 
 ├── Data          # Primary data
-
 │   ├── Env_data 
 │   ├── biogeography.nr_v132.wang.taxonomy.csv
 │   ├── biogeography.dada2.otu.txt
