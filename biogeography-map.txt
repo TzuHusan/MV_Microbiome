@@ -1,0 +1,39 @@
+library(ggplot2)
+library(ggmap)
+
+location = read.table("sampling-sites.csv", header=TRUE, sep=",")
+
+region <- c(left = 10, bottom = 18, right = 130, top = 46)
+
+map <- get_map(c(left = 10.000, bottom=18.000, right=130.000, top=46.0000), zoom=3, maptype="terrain", source= "google", style=feature:all|element:labels|visibility:off)
+ggmap(map)
+
+map <- get_googlemap(center = c(70,32.5), zoom = 2, maptype="satellite", style = 'feature:administrative.country|element:labels|visibility:off')
+ggmap(map)
+
+
+scale_x_longitude <- function(xmin=-180, xmax=180, step=1, ...) {
+  xbreaks <- seq(xmin,xmax,step)
+  xlabels <- unlist(lapply(xbreaks, function(x) ifelse(x < 0, parse(text=paste0(x,"^o", "*W")), ifelse(x > 0, parse(text=paste0(x,"^o", "*E")),x))))
+  return(scale_x_continuous("Longitude", breaks = xbreaks, labels = xlabels, expand = c(0, 0), ...))
+}
+scale_y_latitude <- function(ymin=-90, ymax=90, step=0.5, ...) {
+  ybreaks <- seq(ymin,ymax,step)
+  ylabels <- unlist(lapply(ybreaks, function(x) ifelse(x < 0, parse(text=paste0(x,"^o", "*S")), ifelse(x > 0, parse(text=paste0(x,"^o", "*N")),x))))
+  return(scale_y_continuous("Latitude", breaks = ybreaks, labels = ylabels, expand = c(0, 0), ...))
+}    
+
+ewbrks <- seq(0,140,10)
+nsbrks <- seq(15,50,5)
+ewlbls <- unlist(lapply(ewbrks, function(x) ifelse(x < 0, paste(x, "°E"), ifelse(x > 0, paste(x, "°W"),x))))
+nslbls <- unlist(lapply(nsbrks, function(x) ifelse(x < 0, paste(x, "°S"), ifelse(x > 0, paste(x, "°N"),x))))
+
+# create the map
+samplemap = ggmap(map, darken= c(1, "black")) +
+  scale_x_continuous("Longitude", limits = c(5,130), breaks = ewbrks, labels=ewlbls, expand=c(0,0)) +
+  scale_y_continuous("Latitude", limits = c(15,50), breaks = nsbrks, label=nslbls, expand=c(0,0)) +
+  geom_point(aes(x=Longitude, y=Latitude), data=location, shape = 21, colour = "black", fill = "red", size = 3.5, stroke = 0.5) +
+  theme(axis.text = element_text(size=12, color="black")) + theme_bw()+
+  geom_text_repel(mapping = aes(x =Longitude,y =Latitude, label = location), data=location, color="white")
+
+ggsave(filename="Figue1.pdf", plot=samplemap, device=cairo_pdf, width=297, height=210, units="mm")
