@@ -1,0 +1,1485 @@
+merge.otu.samples = data.frame(matrix(ncol=0, nrow=28928))
+rownames(merge.otu.samples) = rownames(remove.subset_biogeography@otu_table)
+otu = remove.subset_biogeography@otu_table
+otu = data.frame(otu)
+
+merge.otu.samples$Georgia.AK03 = rowSums(otu[grep('AK03', names(otu))])
+merge.otu.samples$Italy.AR01 = rowSums(otu[grep('AR01', names(otu))])
+merge.otu.samples$Italy.COM01 = rowSums(otu[grep('COM', names(otu))])
+merge.otu.samples$China.DSZ01 = rowSums(otu[grep('DSZ01', names(otu))])
+merge.otu.samples$Iran.GG01 = rowSums(otu[grep('GG01', names(otu))])
+merge.otu.samples$Georgia.GJ01 = rowSums(otu[grep('GJ01', names(otu))])
+merge.otu.samples$Taiwan.LGH03 = rowSums(otu[grep('LGH03', names(otu))])
+merge.otu.samples$Italy.PA01 = rowSums(otu[grep('PA01', names(otu))])
+merge.otu.samples$Italy.PA02 = rowSums(otu[grep('PA02', names(otu))])
+merge.otu.samples$Georgia.QK01 = rowSums(otu[grep('QK01', names(otu))])
+merge.otu.samples$Myanmar.SH01 = rowSums(otu[grep('SH01', names(otu))])
+merge.otu.samples$Myanmar.SI02 = rowSums(otu[grep('SI02', names(otu))])
+merge.otu.samples$China.SM22 = rowSums(otu[grep('SM22', names(otu))])
+merge.otu.samples$Taiwan.SYNH02 = rowSums(otu[grep('SYNH02', names(otu))])
+merge.otu.samples$Iran.TA = rowSums(otu[grep('TA', names(otu))])
+otu.merge =otu_table(merge.otu.samples, taxa_are_rows = TRUE)
+taxonomy = as.matrix(remove.subset_biogeography@tax_table)
+taxonomy = tax_table(taxonomy)
+biogeography.merge = phyloseq(otu.merge,taxonomy)
+biogeography.merge.proportion = transform_sample_counts(biogeography.merge, function(x) x/sum(x))
+
+family.merge = tax_glom(biogeography.merge, taxrank="family")
+family.merge.proportion = transform_sample_counts(family.merge, function(x) x/sum(x))
+class.merge = tax_glom(biogeography.merge, taxrank="class")
+class.merge.proportion = transform_sample_counts(class.merge, function(x) x/sum(x))
+
+Haloferacaceae.proportion = subset_taxa(family.merge.proportion, family=="Haloferacaceae")
+Halobacteria.proportion = subset_taxa(class.merge.proportion, class=="Halobacteria")
+Halobacteria.proportion = data.frame(Halobacteria.proportion@otu_table)
+JS1.proportion = subset_taxa(class.merge.proportion, class=="JS1")
+JS1.proportion = data.frame(JS1.proportion@otu_table)
+Hydrogenophilaceae.proportion = subset_taxa(family.merge.proportion, family=="Hydrogenophilaceae")
+Hydrogenophilaceae.proportion = data.frame(Hydrogenophilaceae.proportion@otu_table)
+Hydrogenophilaceae.proportion = t(Hydrogenophilaceae.proportion)
+Desulfobulbaceae.proportion = subset_taxa(family.merge.proportion, family=="Desulfobulbaceae")
+Desulfobulbaceae.proportion = data.frame(Desulfobulbaceae.proportion@otu_table)
+Desulfobulbaceae.proportion = t(Desulfobulbaceae.proportion)
+
+genus.merge = tax_glom(biogeography.merge, taxrank="genus")
+genus.merge.proportion = data.frame(taxa_sums(genus.merge)/sum(biogeography.merge@otu_table))
+genus.asv = genus.merge %>% tax_table() %>% as("matrix") %>% data.frame() 
+genus.merge.otu = data.frame(genus.merge@otu_table)
+genus.merge.otu <- +(genus.merge.otu >=1)
+genus.mv = merge(genus.asv,genus.merge.otu, by =0, all = TRUE)
+
+subset_proteobacteria = subset_taxa(biogeography.merge.proportion, phylum=="Proteobacteria")
+proteobacteria = tax_glom(subset_proteobacteria,taxrank="class")
+proteobacteria = psmelt(proteobacteria)
+
+plot = data.frame(matrix(NA,nrow(proteobacteria),3))  
+colnames(plot) = c("Sample", "phylum", "Abundance")
+plot$Sample = proteobacteria$Sample
+plot$phylum = proteobacteria$class
+plot$Abundance = proteobacteria$Abundance
+plot = lapply(plot, function(x) {gsub("Deltaproteobacteria", "Proteo_Delta", x)})
+plot = lapply(plot, function(x) {gsub("Gammaproteobacteria", "Proteo_Gamma", x)})
+plot = lapply(plot, function(x) {gsub("Alphaproteobacteria", "Proteo_Alpha", x)})
+plot = lapply(plot, function(x) {gsub("Betaproteobacteria", "Proteo_Beta", x)})
+plot = lapply(plot, function(x) {gsub("Zetaproteobacteria", "Proteo_Zeta", x)})
+plot = lapply(plot, function(x) {gsub("Proteobacteria_unclassified", "Proteo_unclassified", x)})
+plot$Abundance = as.numeric(plot$Abundance)
+plot = data.frame(plot)
+
+phylum = tax_glom(biogeography.merge.proportion,taxrank = "phylum")
+phylum = psmelt(phylum)
+phylum_noproteo = subset(phylum , phylum!="Proteobacteria")
+
+dat <- data.table(phylum_noproteo)
+# convert Phylum to a character vector from a factor because R
+dat$phylum <- as.character(dat$phylum)
+# group dataframe by Phylum, calculate median rel. abundance
+dat[, median := median(Abundance, na.rm = TRUE), 
+    by = "phylum"]
+# Change name to remainder of Phylum less than 2.5%
+dat[(Abundance <= 0.025), phylum := "Remainder"]	
+
+plot2 = data.frame(matrix(NA,nrow(dat),3))
+colnames(plot2) = colnames(plot)
+plot2$Sample = dat$Sample
+plot2$Abundance = dat$Abundance
+plot2$phylum = dat$phylum
+
+plot.merge = bind_rows(plot, plot2)
+
+phylum_colors <- c("#4b5410", "#5F7FC7", "orange","#ff4d00", "#0000ff", "#CD9BCD",
+"#AD6F3B", "#673770","#D14285", "#652926", "#FF0013", "#8569D5", "#5E738F",
+"#D1A33D", "#FFFF00","#8A7C64", "#000000", "#bed878", "#45E994", "#2D9961", "#79C1D8","#314CB6"
+,"#00d8ff","#C0C0C0","#ff6b00","#FFCC99")
+
+p4 = ggplot(plot.merge, aes(x=Sample, y=Abundance, fill=factor(phylum, levels=c("Acidobacteria","Actinobacteria","Atribacteria","Bacteroidetes","Chloroflexi","Cloacimonetes","Cyanobacteria","Deferribacteres","Firmicutes","Fusobacteria","Nitrospirae",
+"Patescibacteria","Planctomycetes","Proteo_Alpha","Proteo_Delta","Proteo_Gamma","Proteo_Zeta","Proteo_unclassified","Spirochaetes",
+"Tenericutes","Bacteria_unclassified","Euryarchaeota","Hadesarchaeaeota","Nanoarchaeaeota","Remainder"))))
+p4 = p4 + geom_bar(stat="identity", position="stack") + scale_fill_manual(values = phylum_colors,name="Phylum")+theme_bw()+
+labs(x="Terrestrial mud volcano")
+p4 = p4 +  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5, size=12, colour="black"), axis.text.y= element_text(size=12, color="black"),
+legend.position="bottom", legend.key.size=unit(0.5,"cm"),legend.title=element_text(size=12, color="black"),legend.text=element_text(size=10, color="black"),axis.title.y=element_text(size=14, color="black"), axis.title.x=element_text(size=14, color="black"))+
+guides(shape = guide_legend(override.aes = list(size = 5)))
+print(p4)
+ggsave(filename="Figure2b.pdf", plot=p4, device=cairo_pdf, width=297, height=130, units="mm")
+
+Ed = read.table("Ed.combine.CSS.csv", sep=",", header=TRUE)
+lm_eqn <- function(df){
+    m <- lm(Ed ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x+"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+
+habitat = ggplot(Ed, aes(x=log(geodist,10), y=Ed)) +
+	 geom_point(size=0.8) +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression('Habitat similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))
+figure2 = ggarrange(habitat, p4, ncol = 2, widths=c(1,2),labels = c("a", "b"))
+
+ggsave(filename="Figure2.notext.pdf", plot=figure2, device=cairo_pdf, width=297, height=130, units="mm")
+
+mdat = dist(sample_data_numeric,method = "euclidean")
+m.mdat = melt_dist(as.matrix(mdat))
+dist.similarity = function(x) {(1-(x/max(x)))}
+m.mdat$dist = dist.similarity(m.mdat$dist)
+Ed = read.table("geodist.Ed.csv", sep=",", header=TRUE)
+Ed.geodist <- graph.data.frame(Ed, directed=FALSE)
+Ed.geodist = get.adjacency(Ed.geodist, attr="geodist", sparse=FALSE)
+Ed.geodist = as.dist(Ed.geodist)
+colnames(m.mdat) = c("site2","site1","Ed")
+Ed = inner_join(Ed, m.mdat, by = c("site1", "site2"))
+Ed.Ed = Ed[,c(1,2,4)]
+Ed.Ed <- graph.data.frame(Ed.Ed, directed=FALSE)
+Ed.Ed = get.adjacency(Ed.Ed, attr="Ed", sparse=FALSE)
+Ed.Ed = as.dist(Ed.Ed)
+mantel(Ed.Ed, log(Ed.geodist,10), method="pearson", permutations=10000)
+Mantel statistic based on Pearson's product-moment correlation 
+
+Call:
+mantel(xdis = Ed.Ed, ydis = log(Ed.geodist, 10), method = "pearson",      permutations = 10000) 
+
+Mantel statistic r: 0.1547 
+      Significance: 9.999e-05 
+
+Upper quantiles of permutations (null model):
+   90%    95%  97.5%    99% 
+0.0220 0.0282 0.0338 0.0398 
+Permutation: free
+Number of permutations: 10000
+
+
+**Figure4**
+#remove.subset_biogeography
+metaSeqObject = newMRexperiment(data.frame(remove.subset_biogeography@otu_table)) 
+otu_CSS  = cumNorm(metaSeqObject, p = cumNormStatFast(metaSeqObject))
+CSS.otu = data.frame(MRcounts(otu_CSS, norm=TRUE, log=TRUE))
+CSS.otu = otu_table(CSS.otu, taxa_are_rows=TRUE)
+CSS = phyloseq(CSS.otu, remove.subset_biogeography@sam_data, remove.subset_biogeography@tax_table)
+
+#remove.subset_nofeatures_biogeography
+metaSeqObject.nofeatures = newMRexperiment(data.frame(remove.subset_nofeatures_biogeography@otu_table)) 
+otu.nofeatures_CSS  = cumNorm(metaSeqObject.nofeatures, p = cumNormStatFast(metaSeqObject.nofeatures))
+CSS.nofeatures.otu = data.frame(MRcounts(otu.nofeatures_CSS, norm=TRUE, log=TRUE))
+CSS.nofeatures.otu = otu_table(CSS.nofeatures.otu, taxa_are_rows=TRUE)
+CSS.nofeatures = phyloseq(CSS.nofeatures.otu, remove.subset_nofeatures_biogeography@sam_data, remove.subset_nofeatures_biogeography@tax_table)
+biogeography_CSS_noNA = subset_samples(CSS.nofeatures, NA.=="no")
+biogeography_CSS_noNA = prune_taxa(taxa_sums(biogeography_CSS_noNA) > 0, biogeography_CSS_noNA)
+
+biogeography.ord = ordinate(CSS, "NMDS", "bray", try = 1000, previous.best)
+summary(biogeography.ord)
+stressplot(biogeography.ord)
+p0 = plot_ordination(CSS, biogeography.ord, type="samples", color="site") + theme_bw() + 
+	geom_point(size=3)+labs(color="Site")+
+	theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
+	scale_x_continuous(limits = c(-0.5,0.5), expand = c(0, 0)) +
+	scale_y_continuous(limits = c(-0.4,0.4), expand = c(0, 0)) 
+
+numeric.otu = data.frame(t(data.frame(biogeography_CSS_noNA@otu_table)))
+numeric.data = read.table("sample.numeric.data.csv", header=TRUE, row.names=1, sep=",")
+biogeography.ord.2 = cca(numeric.otu~Chloride+Sulfate+TN+TIC+TS+Methane+TOC, numeric.data)
+sites <- data.frame(scores(biogeography.ord.2, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+head(sites) ##so you can see what element is needed
+sites$samplesite <- get_variable(biogeography_rarefy_noNA, "site") # making a column for SampleType
+sites$sample_location <- get_variable(biogeography_rarefy_noNA, "Location")
+sites$sample_name <- get_variable(biogeography_rarefy_noNA, "sample_name")
+cca.envfit <- envfit(biogeography.ord.2, env=numeric.data, perm=1000)
+
+***VECTORS
+
+             CCA1     CCA2     r2   Pr(>r)    
+Sulfate   0.98326 -0.18222 0.9932 0.000999 ***
+Chloride  0.95658  0.29148 0.9810 0.000999 ***
+Methane   0.99275  0.12016 0.1533 0.045954 *  
+TN       -0.91748 -0.39778 0.1404 0.000999 ***
+TS        0.99012  0.14019 0.7255 0.000999 ***
+TOC      -0.77314 -0.63423 0.0428 0.084915 .  
+TIC       0.07230  0.99738 0.4023 0.000999 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+Permutation: free
+Number of permutations: 1000
+
+vec.sp.df<-as.data.frame(cca.envfit$vectors$arrows*sqrt(cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.01,]) #extracts relevant scores from envifit
+
+p5 <- ggplot(data = sites, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites, aes(x = CCA1, y = CCA2, color=samplesite),size = 3) + 
+  theme_bw() +theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text(data=env.scores.cca, aes(x=CCA1,y=CCA2,label=species),size=5)+labs(color="Site")+
+  scale_x_continuous(limit=c(-1,6), breaks = seq(-1,6, by=1), expand=c(0,0)) +
+	scale_y_continuous(breaks = seq(-5,6, by=1)) 
+  
+figure4 = ggarrange(p0,p5, labels=c("a","b"),common.legend=TRUE, legend="bottom")
+ggsave(filename="Figure4.pdf", plot=figure4, device=cairo_pdf, width=297, height=150, units="mm")
+
+**Figure5**
+D1 = data.frame(CSS.nofeatures@otu_table)
+D1 = t(D1)
+tmp = matrix(as.numeric(as.matrix(D1), 0), nrow(D1)) #binary table
+sample_data = data.frame(CSS.nofeatures@sam_data)
+DIST.all = read.table(file="DIST.all.modified.csv", sep=",", header=TRUE)
+geodist <- graph.data.frame(DIST.all, directed=FALSE)
+geodist = get.adjacency(geodist, attr="geodist", sparse=FALSE)
+geodist = as.dist(geodist)
+DIST.all$shared.otu = 100*(1-as.vector(vegdist(tmp, "jacc", diag = F, upper = F))) # %shared OTUs
+DIST.all$sor = 1-dsvdis(D1, index="sorensen", diag=F, upper=F)+0.001
+sorensen = 1-dsvdis(D1, index="sorensen", diag=F, upper=F)+0.001
+shared.otu = vegdist(D1, "jacc", diag = F, upper = F)
+mantel(shared.otu, log(geodist, 10), method="pearson", permutations=10000)
+Mantel statistic based on Pearson's product-moment correlation 
+
+Call:
+mantel(xdis = shared.otu, ydis = log(geodist, 10), method = "pearson",      permutations = 10000) 
+
+Mantel statistic r: 0.8052 
+      Significance: 9.999e-05 
+
+Upper quantiles of permutations (null model):
+   90%    95%  97.5%    99% 
+0.0146 0.0197 0.0239 0.0291 
+Permutation: free
+Number of permutations: 10000
+
+sorensen = 1- sorensen
+mantel(log(sorensen,10), log(geodist, 10),method="pearson", permutations=10000)
+Mantel statistic based on Pearson's product-moment correlation 
+
+Call:
+mantel(xdis = log(sorensen, 10), ydis = log(geodist, 10), method = "pearson",      permutations = 10000) 
+
+Mantel statistic r:  0.81 
+      Significance: 9.999e-05 
+
+Upper quantiles of permutations (null model):
+   90%    95%  97.5%    99% 
+0.0148 0.0196 0.0236 0.0290 
+Permutation: free
+Number of permutations: 10000
+
+D2 = data.frame(biogeography_CSS_noNA@otu_table)
+D2 = t(D2)
+tmp2 = matrix(as.numeric(as.matrix(D2), 0), nrow(D2))
+Ed$sor = 1-dsvdis(tmp2, index="sorensen", diag=F, upper=F)+0.001
+sorensen.ed = 1-dsvdis(D2, index="sorensen", diag=F, upper=F)+0.001
+write.table(file="Ed.combine.CSS.csv", sep=",", col.names=NA, Ed)
+
+mantel(sorensen.ed, Ed.Ed, method="pearson", permutations=10000)
+
+Mantel statistic based on Pearson's product-moment correlation 
+
+Call:
+mantel(xdis = sorensen.ed, ydis = Ed.Ed, method = "pearson",      permutations = 10000) 
+
+Mantel statistic r: 0.211 
+      Significance: 9.999e-05 
+
+Upper quantiles of permutations (null model):
+   90%    95%  97.5%    99% 
+0.0344 0.0444 0.0528 0.0609 
+Permutation: free
+Number of permutations: 10000
+
+**ecodist**
+mantel in ecodist could be used to calculate significance of mantel test from both positive and negative values of r
+
+**plot**
+lm_eqn <- function(df){
+    m <- lm(shared.otu ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x+"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+shared.asv = ggplot(DIST.all, aes(x=log(geodist,10), y=shared.otu)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression('% shared ASV between samples'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_x_continuous(limit=c(-6,5), breaks= seq(-6,5, by=1), expand=c(0,0)) +
+	scale_y_continuous(limit=c(-1,70), breaks= seq(0,70, by=10), expand=c(0,0)) 
+
+summary(lm(shared.otu~log(geodist,10), DIST.all))
+
+Call:
+lm(formula = shared.otu ~ log(geodist, 10), data = DIST.all)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-17.558  -0.734  -0.050   0.559  45.253 
+
+Coefficients:
+                 Estimate Std. Error t value Pr(>|t|)    
+(Intercept)       8.58508    0.06244   137.5   <2e-16 ***
+log(geodist, 10) -2.20736    0.01775  -124.3   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 3.241 on 8383 degrees of freedom
+Multiple R-squared:  0.6484,	Adjusted R-squared:  0.6484 
+F-statistic: 1.546e+04 on 1 and 8383 DF,  p-value: < 2.2e-16
+
+lm_eqn <- function(df){
+    m <- lm(log(sor,10) ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+sor.similarity = ggplot(DIST.all, aes(x=log(geodist,10), y=log(sor,10))) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression(log[10]~'Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+	scale_x_continuous(limit=c(-6,5), breaks= seq(-6,5, by=1), expand=c(0,0)) +
+	scale_y_continuous(limit=c(-3.1,0), breaks= seq(-3,0, by=0.5), expand=c(0,0)) 
+
+
+summary(lm(log(sor, 10)~log(geodist, 10), DIST.all))
+
+Call:
+lm(formula = log(sor, 10) ~ log(geodist, 10), data = DIST.all)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-1.40132 -0.68090  0.01074  0.50137  1.53546 
+
+Coefficients:
+                  Estimate Std. Error t value Pr(>|t|)    
+(Intercept)      -1.440342   0.012044 -119.59   <2e-16 ***
+log(geodist, 10) -0.225573   0.003424  -65.88   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.6252 on 8383 degrees of freedom
+Multiple R-squared:  0.3411,	Adjusted R-squared:  0.341 
+F-statistic:  4340 on 1 and 8383 DF,  p-value: < 2.2e-16
+
+lm_eqn <- function(df){
+    m <- lm(sor~Ed, df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+
+sor.habitat = ggplot(Ed, aes(x=Ed, y=sor)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression('Habitat similarity'), y=expression('Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+	scale_x_continuous(limit=c(0,1.01), breaks= seq(0,1, by=0.2), expand=c(0,0)) +
+	scale_y_continuous(limit=c(-0.1,0.7), breaks= seq(-0.1,0.7, by=0.2), expand=c(0,0)) 
+
+summary(lm(sor~Ed, Ed))
+
+Call:
+lm(formula = sor ~ Ed, data = Ed)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-0.05892 -0.04131 -0.02783  0.00266  0.61843 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)    
+(Intercept) -0.056428   0.004614  -12.23   <2e-16 ***
+Ed           0.119140   0.005660   21.05   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.07942 on 7873 degrees of freedom
+Multiple R-squared:  0.05329,	Adjusted R-squared:  0.05317 
+F-statistic: 443.1 on 1 and 7873 DF,  p-value: < 2.2e-160.12
+
+figure5 = ggarrange(shared.asv, sor.similarity, sor.habitat, ncol = 3,labels = c("a", "b","c"))
+ggsave(filename="Figure5.pdf", plot=figure5, device=cairo_pdf, width=297, height=130, units="mm")
+ggsave(filename="Figure5.png", plot=figure5, device="png",  width=297, height=130, units="mm")
+		
+**Figure S9 distance decay within / across core**
+DIST.across = read.table(file='DIST.across.csv', sep=",", header=TRUE)
+Ed.across = read.table(file="Ed.across.csv", sep=",", header=TRUE)
+
+DIST.across.shared.otu = DIST.across[,c(1,2,5)]
+DIST.across.shared.otu <- graph.data.frame(DIST.across.shared.otu, directed=FALSE)
+DIST.across.shared.otu = get.adjacency(DIST.across.shared.otu , attr="shared.otu", sparse=FALSE)
+DIST.across.shared.otu = as.dist(DIST.across.shared.otu )
+
+DIST.across.geodist = DIST.across[,1:3]
+DIST.across.geodist <- graph.data.frame(DIST.across.geodist, directed=FALSE)
+DIST.across.geodist = get.adjacency(DIST.across.geodist , attr="geodist", sparse=FALSE)
+DIST.across.geodist = as.dist(DIST.across.geodist )
+DIST.across.shared.otu = 1 - DIST.across.shared.otu
+
+DIST.across.sor = DIST.across[,c(1,2,4)]
+DIST.across.sor <- graph.data.frame(DIST.across.sor, directed=FALSE)
+DIST.across.sor = get.adjacency(DIST.across.sor , attr="sor", sparse=FALSE)
+DIST.across.sor = as.dist(DIST.across.sor )
+DIST.across.sor = 1 - DIST.across.sor
+
+Ed.across.Ed = Ed.across[,c(1,2,4)]
+Ed.across.Ed <- graph.data.frame(Ed.across.Ed, directed=FALSE)
+Ed.across.Ed = get.adjacency(Ed.across.Ed , attr="Ed", sparse=FALSE)
+Ed.across.Ed = as.dist(Ed.across.Ed )
+
+Ed.across.sor = Ed.across[,c(1,2,5)]
+Ed.across.sor <- graph.data.frame(Ed.across.sor, directed=FALSE)
+Ed.across.sor = get.adjacency(Ed.across.sor , attr="sor", sparse=FALSE)
+Ed.across.sor = as.dist(Ed.across.sor )
+
+mantel(DIST.across.shared.otu, log(DIST.across.geodist,10), na.rm=TRUE, permutations=10000, method="pearson")
+mantel(log(DIST.across.sor,10), log(DIST.across.geodist,10), na.rm=TRUE, permutations=10000, method="pearson")
+mantel(Ed.across.Ed, Ed.across.sor, na.rm=TRUE, permutations=10000, method="pearson")
+
+lm_eqn <- function(df){
+    m <- lm(shared.otu ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x+"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+shared.across.asv = ggplot(DIST.across, aes(x=log(geodist,10), y=shared.otu)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression('% shared ASV between samples'))+	
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+ 
+			scale_x_continuous(lim=c(-3,4.5),expand=c(0,0),breaks=c(-3,-2,-1,0,1,2,3,4,4.5))+
+			scale_y_continuous(lim=c(0,40), expand=c(0,0))
+
+lm_eqn <- function(df){
+    m <- lm(log(sor,10) ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+sor.across.similarity = ggplot(DIST.across, aes(x=log(geodist,10), y=log(sor,10))) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression(log[10]~'Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_y_continuous(breaks=seq(0.5,-3.5,-1),lim=c(-3.5,0.5), expand=c(0,0))+
+			scale_x_continuous(lim=c(-3,4.5),expand=c(0,0),breaks=c(-3,-2,-1,0,1,2,3,4,4.5))
+
+lm_eqn <- function(df){
+    m <- lm(sor~Ed, df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+
+sor.across.habitat = ggplot(Ed.across, aes(x=Ed, y=sor)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression('Habitat similarity'), y=expression('Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_y_continuous(breaks=seq(0,0.6,0.1),lim=c(0,0.6), expand=c(0,0))+
+			scale_x_continuous(lim=c(0,1),expand=c(0,0))
+
+
+## comparisons within each sediment core
+DIST.within = read.table(file='DIST.within.csv', sep=",", header=TRUE)
+Ed.within = read.table("Ed.within.csv", sep=",", header=TRUE)
+DIST.within.shared.otu = DIST.within[,c(1,2,5)]
+DIST.within.shared.otu <- graph.data.frame(DIST.within.shared.otu, directed=FALSE)
+DIST.within.shared.otu = get.adjacency(DIST.within.shared.otu , attr="shared.otu", sparse=FALSE)
+DIST.within.shared.otu = as.dist(DIST.within.shared.otu )
+
+DIST.within.geodist = DIST.within[,1:3]
+DIST.within.geodist <- graph.data.frame(DIST.within.geodist, directed=FALSE)
+DIST.within.geodist = get.adjacency(DIST.within.geodist , attr="geodist", sparse=FALSE)
+DIST.within.geodist = as.dist(DIST.within.geodist )
+
+DIST.within.sor = DIST.within[,c(1,2,4)]
+DIST.within.sor <- graph.data.frame(DIST.within.sor, directed=FALSE)
+DIST.within.sor = get.adjacency(DIST.within.sor , attr="sor", sparse=FALSE)
+DIST.within.sor = as.dist(DIST.within.sor )
+
+Ed.within.Ed = Ed.within[,c(1,2,4)]
+Ed.within.Ed <- graph.data.frame(Ed.within.Ed, directed=FALSE)
+Ed.within.Ed = get.adjacency(Ed.within.Ed , attr="Ed", sparse=FALSE)
+Ed.within.Ed = as.dist(Ed.within.Ed )
+
+Ed.within.sor = Ed.within[,c(1,2,5)]
+Ed.within.sor <- graph.data.frame(Ed.within.sor, directed=FALSE)
+Ed.within.sor = get.adjacency(Ed.within.sor , attr="sor", sparse=FALSE)
+Ed.within.sor = as.dist(Ed.within.sor )
+
+Ed.within.geodist = Ed.within[,1:3]
+Ed.within.geodist <- graph.data.frame(Ed.within.geodist, directed=FALSE)
+Ed.within.geodist = get.adjacency(Ed.within.geodist , attr="geodist", sparse=FALSE)
+Ed.within.geodist = as.dist(Ed.within.geodist )
+
+mantel(log(DIST.within.geodist,10), DIST.within.shared.otu, na.rm=TRUE, permutations=10000, method="pearson")
+mantel(log(DIST.within.sor,10), log(DIST.within.geodist,10), na.rm=TRUE, permutations=10000, method="pearson")
+mantel(Ed.within.Ed, Ed.within.sor, na.rm=TRUE, permutations=10000, method="pearson")
+mantel(Ed.within.Ed, log(Ed.within.geodist, 10), na.rm=TRUE, permutations=10000, method="pearson")
+lm_eqn <- function(df){
+    m <- lm(shared.otu ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x+"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+shared.within.asv = ggplot(DIST.within, aes(x=log(geodist,10), y=shared.otu)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression('% shared ASV between samples'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+ 
+			scale_x_continuous(lim=c(-6,-2),expand=c(0,0),breaks=c(-6,-5.5,-5,-4.5,-4,-3.5,-3,-2.5,-2))+
+			scale_y_continuous(lim=c(0,70), breaks=seq(0,70,10),expand=c(0,0))
+			
+lm_eqn <- function(df){
+    m <- lm(log(sor,10) ~ log(geodist,10), df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+sor.within.similarity = ggplot(DIST.within, aes(x=log(geodist,10), y=log(sor,10))) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression(log[10]~'Geographic distance or depth (km)'), y=expression(log[10]~'Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_x_continuous(lim=c(-6,-2),expand=c(0,0),breaks=c(-6,-5.5,-5,-4.5,-4,-3.5,-3,-2.5,-2))+
+			scale_y_continuous(lim=c(-2,0), breaks=seq(0,-2,-0.5),expand=c(0,0))
+
+lm_eqn <- function(df){
+    m <- lm(sor~Ed, df);
+    eq <- substitute("y = "~a~"x"~c~";"~italic(R)[adj]^2~"="~r2~"; "~italic(P)~p, 
+         list(c = format(summary(m)$coefficient[1,1], digits=3), a = format(summary(m)$coefficient[2,1], digits=3),
+         	  r2 = format(summary(m)$adj.r.squared, digits = 3), p= ifelse(summary(m)$coefficient[2,4]<0.001, "< 0.001", "> 0.001")))
+    as.character(as.expression(eq));
+}
+
+sor.within.habitat = ggplot(Ed.within, aes(x=Ed, y=sor)) +
+	 geom_point(size=0.8, color="black") +  geom_smooth(method='lm', formula= y~x, se = FALSE, linetype = "dashed", color="gray", size=0.5)+
+	 labs(x=expression('Habitat similarity'), y=expression('Community similarity'))+
+	 theme(axis.text.x = element_text(colour="black",size=12),
+			axis.text.y = element_text(colour="black",size=12),
+			axis.line = element_line(size=0.5, colour = "black"),panel.grid.major = element_blank(), 
+			panel.grid.minor = element_blank(),panel.background = element_blank(),
+			panel.border = element_rect(linetype = "solid", fill = NA), axis.ticks.length=unit(0.3, "cm"))+
+			scale_y_continuous(breaks=seq(0,0.7,0.1),lim=c(0,0.7), expand=c(0,0))+
+			scale_x_continuous(lim=c(0,1),expand=c(0,0))
+
+figures9 = ggarrange(shared.across.asv, sor.across.similarity, sor.across.habitat, shared.within.asv, sor.within.similarity, sor.within.habitat, 
+ncol = 3,nrow=2, labels = c("a", "b","c","d","e","f"))
+ggsave(filename="FigureS9.pdf", plot=figures9, device=cairo_pdf, width=297, height=210, units="mm")
+
+**Supplementary Figure S4**
+p1 = plot_richness(biogeography_rarefy,x="site", measures=c("Observed","Shannon","Chao1"))
+ggsave(filename="FigureS4.pdf", plot=p1, device=cairo_pdf, width=297, height=150, units="mm")
+
+**ANOSIM**
+D1.dist=vegdist(D1, "bray")
+sample.env = data.frame(CSS@sam_data)
+D1.ano = anosim(D1, sample.env$site, permutations=1000)
+summary(D1.ano)
+pdf("Supplementary Figure S8.pdf",paper="a4r", height=0, width=0)
+plot(D1.ano)
+dev.off()
+
+**CCAA_sites**
+axis.expl <- function(mod, axes = 1:2) {
+  
+  if(is.null(mod$CCA)) {
+    sapply(axes, function(i) {
+    100*mod$CA$eig[i]/mod$tot.chi
+    })
+  } else {
+    sapply(axes, function(i) {
+    100*mod$CCA$eig[i]/mod$tot.chi
+    })
+  }   
+}
+
+AK = subset_samples(biogeography_CSS_noNA, core=="Georgia-AK03")
+AK = prune_taxa(taxa_sums(AK)>0, AK)
+AK.otu = data.frame(AK@otu_table)
+AK.otu = data.frame(t(AK.otu))
+AK.numeric.data = data.frame(AK@sam_data)
+AK.cca.ord = cca(AK.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, AK.numeric.data)
+sites.AK <- data.frame(scores(AK.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.AK$samplesite <- get_variable(AK, "site") # making a column for SampleType
+sites.AK$sample_location <- get_variable(AK, "Location")
+sites.AK$sample_name <- get_variable(AK, "sample_name")
+sites.AK$Depth <- get_variable(AK, "Depth")
+labs <- axis.expl(AK.cca.ord)
+AK.cca.envfit <- envfit(AK.cca.ord, env=AK.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(AK.cca.envfit$vectors$arrows*sqrt(AK.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=AK.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pAK.cca <- ggplot(data = sites.AK, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.AK, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.AK, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  theme_bw() +
+  scale_x_continuous(lim=c(-3,1),expand=c(0,0)) +scale_y_continuous(lim=c(-1.5, 3.5),expand=c(0,0))+
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=0.5)+
+  ggtitle("Georgia-AK03")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+ 
+
+ 
+GJ = subset_samples(biogeography_CSS_noNA, core=="Georgia-GJ01")
+GJ = prune_taxa(taxa_sums(GJ)>0, GJ)
+GJ.otu = data.frame(GJ@otu_table)
+GJ.otu = data.frame(t(GJ.otu))
+GJ.numeric.data = data.frame(GJ@sam_data)
+GJ.cca.ord = cca(GJ.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, GJ.numeric.data)
+sites.GJ <- data.frame(scores(GJ.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.GJ$samplesite <- get_variable(GJ, "site") # mGJing a column for SampleType
+sites.GJ$sample_location <- get_variable(GJ, "Location")
+sites.GJ$sample_name <- get_variable(GJ, "sample_name")
+sites.GJ$Depth <- get_variable(GJ, "Depth")
+labs <- axis.expl(GJ.cca.ord)
+GJ.cca.envfit <- envfit(GJ.cca.ord, env=GJ.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(GJ.cca.envfit$vectors$arrows*sqrt(GJ.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=GJ.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pGJ.cca <- ggplot(data = sites.GJ, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.GJ, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.GJ, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-1.5, 3.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=0.5)+
+  ggtitle("Georgia-GJ01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+QK = subset_samples(biogeography_CSS_noNA, core=="Georgia-QK01")
+QK = prune_taxa(taxa_sums(QK)>0, QK)
+QK.otu = data.frame(QK@otu_table)
+QK.otu = data.frame(t(QK.otu))
+QK.numeric.data = data.frame(QK@sam_data)
+QK.cca.ord = cca(QK.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, QK.numeric.data)
+sites.QK <- data.frame(scores(QK.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.QK$samplesite <- get_variable(QK, "site") # mQKing a column for SampleType
+sites.QK$sample_location <- get_variable(QK, "Location")
+sites.QK$sample_name <- get_variable(QK, "sample_name")
+sites.QK$Depth <- get_variable(QK, "Depth")
+labs <- axis.expl(QK.cca.ord)
+QK.cca.envfit <- envfit(QK.cca.ord, env=QK.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(QK.cca.envfit$vectors$arrows*sqrt(QK.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=QK.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.06,]) #extracts relevant scores from envifit
+pQK.cca <- ggplot(data = sites.QK, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.QK, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.QK, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.,3),expand=c(0,0)) +scale_y_continuous(lim=c(-1.5,3.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=-0.2)+
+  ggtitle("Georgia-QK01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+GG = subset_samples(biogeography_CSS_noNA, core=="Iran-GG01")
+GG = prune_taxa(taxa_sums(GG)>0, GG)
+GG.otu = data.frame(GG@otu_table)
+GG.otu = data.frame(t(GG.otu))
+GG.numeric.data = data.frame(GG@sam_data)
+GG.cca.ord = cca(GG.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, GG.numeric.data)
+sites.GG <- data.frame(scores(GG.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.GG$samplesite <- get_variable(GG, "site") # mGGing a column for SampleType
+sites.GG$sample_location <- get_variable(GG, "Location")
+sites.GG$sample_name <- get_variable(GG, "sample_name")
+sites.GG$Depth <- get_variable(GG, "Depth")
+labs <- axis.expl(GG.cca.ord)
+GG.cca.envfit <- envfit(GG.cca.ord, env=GG.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(GG.cca.envfit$vectors$arrows*sqrt(GG.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=GG.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pGG.cca <- ggplot(data = sites.GG, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.GG, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.GG, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,2),expand=c(0,0)) +scale_y_continuous(lim=c(-1.5,3.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=1, vjust=-0.8)+
+  ggtitle("Iran-GG")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+TA = subset_samples(biogeography_CSS_noNA, core=="Iran-TA01")
+TA = prune_taxa(taxa_sums(TA)>0, TA)
+TA.otu = data.frame(TA@otu_table)
+TA.otu = data.frame(t(TA.otu))
+TA.numeric.data = data.frame(TA@sam_data)
+TA.cca.ord = cca(TA.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, TA.numeric.data)
+sites.TA <- data.frame(scores(TA.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.TA$samplesite <- get_variable(TA, "site") # mTAing a column for SampleType
+sites.TA$sample_location <- get_variable(TA, "Location")
+sites.TA$sample_name <- get_variable(TA, "sample_name")
+sites.TA$Depth <- get_variable(TA, "Depth")
+labs <- axis.expl(TA.cca.ord)
+TA.cca.envfit <- envfit(TA.cca.ord, env=TA.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(TA.cca.envfit$vectors$arrows*sqrt(TA.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=TA.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pTA.cca <- ggplot(data = sites.TA, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.TA, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.TA, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-2.5,2.5),expand=c(0,0))+
+  theme_bw() +
+  ggtitle("Iran-TA01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SH = subset_samples(biogeography_CSS_noNA, core=="Myanmar-SH01")
+SH = prune_taxa(taxa_sums(SH)>0, SH)
+SH.otu = data.frame(SH@otu_table)
+SH.otu = data.frame(t(SH.otu))
+SH.numeric.data = data.frame(SH@sam_data)
+SH.cca.ord = cca(SH.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SH.numeric.data)
+sites.SH <- data.frame(scores(SH.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SH$samplesite <- get_variable(SH, "site") # mSHing a column for SampleType
+sites.SH$sample_location <- get_variable(SH, "Location")
+sites.SH$sample_name <- get_variable(SH, "sample_name")
+sites.SH$Depth <- get_variable(SH, "Depth")
+labs <- axis.expl(SH.cca.ord)
+SH.cca.envfit <- envfit(SH.cca.ord, env=SH.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SH.cca.envfit$vectors$arrows*sqrt(SH.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SH.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSH.cca <- ggplot(data = sites.SH, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SH, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SH, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1,2),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  ggtitle("Myanmar-SH01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SI = subset_samples(biogeography_CSS_noNA, core=="Myanmar-SI02")
+SI = prune_taxa(taxa_sums(SI)>0, SI)
+SI.otu = data.frame(SI@otu_table)
+SI.otu = data.frame(t(SI.otu))
+SI.numeric.data = data.frame(SI@sam_data)
+SI.cca.ord = cca(SI.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SI.numeric.data)
+sites.SI <- data.frame(scores(SI.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SI$samplesite <- get_variable(SI, "site") # mSIing a column for SampleType
+sites.SI$sample_location <- get_variable(SI, "Location")
+sites.SI$sample_name <- get_variable(SI, "sample_name")
+sites.SI$Depth <- get_variable(SI, "Depth")
+labs <- axis.expl(SI.cca.ord)
+SI.cca.envfit <- envfit(SI.cca.ord, env=SI.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SI.cca.envfit$vectors$arrows*sqrt(SI.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SI.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSI.cca <- ggplot(data = sites.SI, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SI, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SI, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2,2),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  ggtitle("Myanmar-SI02")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+AR = subset_samples(biogeography_CSS_noNA, core=="Italy-AR01")
+AR = prune_taxa(taxa_sums(AR)>0, AR)
+AR.otu = data.frame(AR@otu_table)
+AR.otu = data.frame(t(AR.otu))
+AR.numeric.data = data.frame(AR@sam_data)
+AR.cca.ord = cca(AR.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, AR.numeric.data)
+sites.AR <- data.frame(scores(AR.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.AR$samplesite <- get_variable(AR, "site") # mARing a column for SampleType
+sites.AR$sample_location <- get_variable(AR, "Location")
+sites.AR$sample_name <- get_variable(AR, "sample_name")
+sites.AR$Depth <- get_variable(AR, "Depth")
+labs <- axis.expl(AR.cca.ord)
+AR.cca.envfit <- envfit(AR.cca.ord, env=AR.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(AR.cca.envfit$vectors$arrows*sqrt(AR.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=AR.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pAR.cca <- ggplot(data = sites.AR, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.AR, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.AR, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+   geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=1.6)+
+  ggtitle("Italy-AR01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+COM = subset_samples(biogeography_CSS_noNA, core=="Italy-COM01")
+COM = prune_taxa(taxa_sums(COM)>0, COM)
+COM.otu = data.frame(COM@otu_table)
+COM.otu = data.frame(t(COM.otu))
+COM.numeric.data = data.frame(COM@sam_data)
+COM.cca.ord = cca(COM.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, COM.numeric.data)
+sites.COM <- data.frame(scores(COM.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.COM$samplesite <- get_variable(COM, "site") # mCOMing a column for SampleType
+sites.COM$sample_location <- get_variable(COM, "Location")
+sites.COM$sample_name <- get_variable(COM, "sample_name")
+sites.COM$Depth <- get_variable(COM, "Depth")
+labs <- axis.expl(COM.cca.ord)
+COM.cca.envfit <- envfit(COM.cca.ord, env=COM.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(COM.cca.envfit$vectors$arrows*sqrt(COM.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=COM.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pCOM.cca <- ggplot(data = sites.COM, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.COM, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.COM, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-2.5,2.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+   geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=1, vjust=-2, point.padding = NA)+
+  ggtitle("Italy-COM01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+PA01 = subset_samples(biogeography_CSS_noNA, core=="Italy-PA01")
+PA01 = prune_taxa(taxa_sums(PA01)>0, PA01)
+PA01.otu = data.frame(PA01@otu_table)
+PA01.otu = data.frame(t(PA01.otu))
+PA01.numeric.data = data.frame(PA01@sam_data)
+PA01.cca.ord = cca(PA01.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, PA01.numeric.data)
+sites.PA01 <- data.frame(scores(PA01.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.PA01$samplesite <- get_variable(PA01, "site") # mPA01ing a column for SampleType
+sites.PA01$sample_location <- get_variable(PA01, "Location")
+sites.PA01$sample_name <- get_variable(PA01, "sample_name")
+sites.PA01$Depth <- get_variable(PA01, "Depth")
+labs <- axis.expl(PA01.cca.ord)
+PA01.cca.envfit <- envfit(PA01.cca.ord, env=PA01.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(PA01.cca.envfit$vectors$arrows*sqrt(PA01.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=PA01.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pPA01.cca <- ggplot(data = sites.PA01, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.PA01, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.PA01, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2,2),expand=c(0,0)) +scale_y_continuous(lim=c(-2.5,2.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.4)+
+  ggtitle("Italy-PA01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+PA02 = subset_samples(biogeography_CSS_noNA, core=="Italy-PA02")
+PA02 = prune_taxa(taxa_sums(PA02)>0, PA02)
+PA02.otu = data.frame(PA02@otu_table)
+PA02.otu = data.frame(t(PA02.otu))
+PA02.numeric.data = data.frame(PA02@sam_data)
+PA02.cca.ord = cca(PA02.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, PA02.numeric.data)
+sites.PA02 <- data.frame(scores(PA02.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.PA02$samplesite <- get_variable(PA02, "site") # mPA02ing a column for SampleType
+sites.PA02$sample_location <- get_variable(PA02, "Location")
+sites.PA02$sample_name <- get_variable(PA02, "sample_name")
+sites.PA02$Depth <- get_variable(PA02, "Depth")
+labs <- axis.expl(PA02.cca.ord)
+PA02.cca.envfit <- envfit(PA02.cca.ord, env=PA02.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(PA02.cca.envfit$vectors$arrows*sqrt(PA02.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=PA02.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pPA02.cca <- ggplot(data = sites.PA02, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.PA02, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.PA02, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2,1.5),expand=c(0,0)) +scale_y_continuous(lim=c(-2.5,2.5),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.4)+
+  ggtitle("Italy-PA02")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+LGH = subset_samples(biogeography_CSS_noNA, core=="Taiwan-LGH03")
+LGH = prune_taxa(taxa_sums(LGH)>0, LGH)
+LGH.otu = data.frame(LGH@otu_table)
+LGH.otu = data.frame(t(LGH.otu))
+LGH.numeric.data = data.frame(LGH@sam_data)
+LGH.cca.ord = cca(LGH.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, LGH.numeric.data)
+sites.LGH <- data.frame(scores(LGH.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.LGH$samplesite <- get_variable(LGH, "site") # mLGHing a column for SampleType
+sites.LGH$sample_location <- get_variable(LGH, "Location")
+sites.LGH$sample_name <- get_variable(LGH, "sample_name")
+sites.LGH$Depth <- get_variable(LGH, "Depth")
+labs <- axis.expl(LGH.cca.ord)
+LGH.cca.envfit <- envfit(LGH.cca.ord, env=LGH.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(LGH.cca.envfit$vectors$arrows*sqrt(LGH.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=LGH.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pLGH.cca <- ggplot(data = sites.LGH, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.LGH, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.LGH, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-3,1.5),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.5, vjust=-0.9)+
+  ggtitle("Taiwan-LGH03")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SYNHC4 = subset_samples(biogeography_CSS_noNA, core=="Taiwan-SYNH02-C4")
+SYNHC4 = prune_taxa(taxa_sums(SYNHC4)>0, SYNHC4)
+SYNHC4.otu = data.frame(SYNHC4@otu_table)
+SYNHC4.otu = data.frame(t(SYNHC4.otu))
+SYNHC4.numeric.data = data.frame(SYNHC4@sam_data)
+SYNHC4.cca.ord = cca(SYNHC4.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SYNHC4.numeric.data)
+sites.SYNHC4 <- data.frame(scores(SYNHC4.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SYNHC4$samplesite <- get_variable(SYNHC4, "site") # mSYNHC4ing a column for SampleType
+sites.SYNHC4$sample_location <- get_variable(SYNHC4, "Location")
+sites.SYNHC4$sample_name <- get_variable(SYNHC4, "sample_name")
+sites.SYNHC4$Depth <- get_variable(SYNHC4, "Depth")
+labs <- axis.expl(SYNHC4.cca.ord)
+SYNHC4.cca.envfit <- envfit(SYNHC4.cca.ord, env=SYNHC4.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SYNHC4.cca.envfit$vectors$arrows*sqrt(SYNHC4.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SYNHC4.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSYNHC4.cca <- ggplot(data = sites.SYNHC4, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SYNHC4, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SYNHC4, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-2.5,3),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=0.5)+
+  ggtitle("Taiwan-SYNH02C4")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SYNHC11 = subset_samples(biogeography_CSS_noNA, core=="Taiwan-SYNH02-C11")
+SYNHC11 = prune_taxa(taxa_sums(SYNHC11)>0, SYNHC11)
+SYNHC11.otu = data.frame(SYNHC11@otu_table)
+SYNHC11.otu = data.frame(t(SYNHC11.otu))
+SYNHC11.numeric.data = data.frame(SYNHC11@sam_data)
+SYNHC11.cca.ord = cca(SYNHC11.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SYNHC11.numeric.data)
+sites.SYNHC11 <- data.frame(scores(SYNHC11.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SYNHC11$samplesite <- get_variable(SYNHC11, "site") # mSYNHC11ing a column for SampleType
+sites.SYNHC11$sample_location <- get_variable(SYNHC11, "Location")
+sites.SYNHC11$sample_name <- get_variable(SYNHC11, "sample_name")
+sites.SYNHC11$Depth <- get_variable(SYNHC11, "Depth")
+labs <- axis.expl(SYNHC11.cca.ord)
+SYNHC11.cca.envfit <- envfit(SYNHC11.cca.ord, env=SYNHC11.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SYNHC11.cca.envfit$vectors$arrows*sqrt(SYNHC11.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SYNHC11.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSYNHC11.cca <- ggplot(data = sites.SYNHC11, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SYNHC11, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SYNHC11, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,3.5),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", vjust=0.5)+
+  ggtitle("Taiwan-SYNH02C11")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+DSZ = subset_samples(biogeography_CSS_noNA, core=="China-DSZ01")
+DSZ = prune_taxa(taxa_sums(DSZ)>0, DSZ)
+DSZ.otu = data.frame(DSZ@otu_table)
+DSZ.otu = data.frame(t(DSZ.otu))
+DSZ.numeric.data = data.frame(DSZ@sam_data)
+DSZ.cca.ord = cca(DSZ.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, DSZ.numeric.data)
+sites.DSZ <- data.frame(scores(DSZ.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.DSZ$samplesite <- get_variable(DSZ, "site") # mDSZing a column for SampleType
+sites.DSZ$sample_location <- get_variable(DSZ, "Location")
+sites.DSZ$sample_name <- get_variable(DSZ, "sample_name")
+sites.DSZ$Depth <- get_variable(DSZ, "Depth")
+labs <- axis.expl(DSZ.cca.ord)
+DSZ.cca.envfit <- envfit(DSZ.cca.ord, env=DSZ.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(DSZ.cca.envfit$vectors$arrows*sqrt(DSZ.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=DSZ.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pDSZ.cca <- ggplot(data = sites.DSZ, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.DSZ, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.DSZ, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1.5,2),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_segment(data=env.scores.cca,aes(x=0,xend=CCA1,y=0,yend=CCA2),
+      arrow = arrow(length = unit(0.5, "cm")),colour="red") + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.5, vjust=-0.5)+
+  ggtitle("China-DSZ01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+SM = subset_samples(biogeography_CSS_noNA, core=="China-SM22")
+SM = prune_taxa(taxa_sums(SM)>0, SM)
+SM.otu = data.frame(SM@otu_table)
+SM.otu = data.frame(t(SM.otu))
+SM.numeric.data = data.frame(SM@sam_data)
+SM.cca.ord = cca(SM.otu~Chloride+Sulfate+TN+TIC+TS+Depth+Methane+TOC, SM.numeric.data)
+sites.SM <- data.frame(scores(SM.cca.ord, choices=c(1,2),display = c("sites"))) #dataframe of species scoes for plotting
+sites.SM$samplesite <- get_variable(SM, "site") # mSMing a column for SampleType
+sites.SM$sample_location <- get_variable(SM, "Location")
+sites.SM$sample_name <- get_variable(SM, "sample_name")
+sites.SM$Depth <- get_variable(SM, "Depth")
+labs <- axis.expl(SM.cca.ord)
+SM.cca.envfit <- envfit(SM.cca.ord, env=SM.numeric.data, perm=1000)
+vec.sp.df<-as.data.frame(SM.cca.envfit$vectors$arrows*sqrt(SM.cca.envfit$vectors$r))
+vec.sp.df<-as.data.frame(cbind(vec.sp.df,pvals=SM.cca.envfit$vectors$pvals))
+vec.sp.df$species<-rownames(vec.sp.df)
+env.scores.cca <- as.data.frame(vec.sp.df[vec.sp.df$pvals<0.05,]) #extracts relevant scores from envifit
+pSM.cca <- ggplot(data = sites.SM, aes(x = CCA1, y = CCA2))+ 
+  geom_point(data=sites.SM, aes(x = CCA1, y = CCA2),size = 2) + 
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = Depth), data=sites.SM, color="black")+
+  xlab(paste("CCA1 [", format(round(labs[1],2), nsmall=2), "%]", sep="")) +
+  ylab(paste("CCA2 [", format(round(labs[2],2), nsmall=2), "%]", sep="")) +
+  scale_x_continuous(lim=c(-1,2.5),expand=c(0,0)) +scale_y_continuous(lim=c(-3,3),expand=c(0,0))+
+  theme_bw() +
+  geom_text_repel(mapping = aes(x =CCA1,y =CCA2, label = species), data=env.scores.cca, color="red", hjust=0.5)+
+  ggtitle("China-SM22")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))
+
+cca.figure = ggarrange(pAK.cca,pQK.cca,pGJ.cca,pGG.cca,pTA.cca,pCOM.cca,pPA01.cca,pPA02.cca,pAR.cca,pSH.cca,pSI.cca,pSM.cca,pDSZ.cca,pSYNHC4.cca, pSYNHC11.cca,pLGH.cca,ncol=4,nrow=4)
+ggsave(filename="Supplementary Figure S7.pdf", plot=cca.figure, device=cairo_pdf, width=297, height=297, units="mm")
+
+##diversity vs. depth
+observed = estimate_richness(biogeography_rarefy, split= TRUE, measures="Observed")
+chao1 = estimate_richness(biogeography_rarefy, split= TRUE, measures="Chao1")
+shannon = estimate_richness(biogeography_rarefy, split= TRUE, measures="Shannon")
+diversity = data.frame(observed, chao1, shannon)
+sample_data = remove.subset_biogeography@sam_data
+diversity.depth = sample_data$Depth
+diversity.depth = data.frame(sample_data$Depth)
+row.names(diversity.depth) = row.names(sample_data)
+colnames(diversity.depth) = c("Depth")
+diversity.depth = merge(diversity.depth, diversity, by = 0)
+row.names(diversity.depth) = diversity.depth[,1]
+diversity.depth = diversity.depth[,-1]
+
+AK = diversity.depth[grep("^AK03", rownames(diversity.depth)),]
+AK.diversity = ggscatter(AK, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Georgia-AK03")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+AK.lm = summary(lm(Shannon~Depth, AK))
+
+AR = diversity.depth[grep("^AR01", rownames(diversity.depth)),]
+AR.diversity = ggscatter(AR, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Italy-AR01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+AR.lm = summary(lm(Shannon~Depth, AR))
+
+COM = diversity.depth[grep("^COM01", rownames(diversity.depth)),]
+COM.diversity = ggscatter(COM, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Italy-COM01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+COM.lm = summary(lm(Shannon~Depth, COM))
+
+DSZ = diversity.depth[grep("^DSZ01", rownames(diversity.depth)),]
+DSZ.diversity = ggscatter(DSZ, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("China-DSZ01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+DSZ.lm = summary(lm(Shannon~Depth, DSZ))
+
+GG = diversity.depth[grep("^GG", rownames(diversity.depth)),]
+GG.diversity = ggscatter(GG, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Iran-GG")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+GG.lm = summary(lm(Shannon~Depth, GG))
+
+GJ = diversity.depth[grep("^GJ", rownames(diversity.depth)),]
+GJ.diversity = ggscatter(GJ, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Georgia-GJ")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+GJ.lm = summary(lm(Shannon~Depth, GJ))
+
+LGH = diversity.depth[grep("^LGH03", rownames(diversity.depth)),]
+LGH.diversity = ggscatter(LGH, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Taiwan-LGH03")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+LGH.lm = summary(lm(Shannon~Depth, LGH))
+
+PA01 = diversity.depth[grep("^PA01", rownames(diversity.depth)),]
+PA01.diversity = ggscatter(PA01, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Italy-PA01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+PA01.lm = summary(lm(Shannon~Depth, PA01))
+
+PA02 = diversity.depth[grep("^PA02", rownames(diversity.depth)),]
+PA02.diversity = ggscatter(PA02, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Italy-PA02")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+PA02.lm = summary(lm(Shannon~Depth, PA02))
+
+QK = diversity.depth[grep("^QK01", rownames(diversity.depth)),]
+QK.diversity = ggscatter(QK, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Georgia-QK01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+QK.lm = summary(lm(Shannon~Depth, QK))
+
+SH = diversity.depth[grep("^SH", rownames(diversity.depth)),]
+SH.diversity = ggscatter(SH, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Myanmar-SH")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SH.lm = summary(lm(Shannon~Depth, SH))
+
+SI = diversity.depth[grep("^SI", rownames(diversity.depth)),]
+SI.diversity = ggscatter(SI, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Myanmar-SI")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SI.lm = summary(lm(Shannon~Depth, SI))
+
+SM = diversity.depth[grep("^SM22", rownames(diversity.depth)),]
+SM.diversity = ggscatter(SM, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("China-SM22")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SM.lm = summary(lm(Shannon~Depth, SM))
+
+SYNH = diversity.depth[grep("^SYNH02_C4", rownames(diversity.depth)),]
+SYNH.diversity = ggscatter(SYNH, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Taiwan-SYNH02C4")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SYNH.lm	 = summary(lm(Shannon~Depth, SYNH))
+
+SYNH_C11 = diversity.depth[grep("^SYNH02_C11", rownames(diversity.depth)),]
+SYNH_C11.diversity = ggscatter(SYNH_C11, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Taiwan-SYNH02C11")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SYNHC11.lm	 = summary(lm(Shannon~Depth, SYNH_C11))
+
+
+TA = diversity.depth[grep("^TA01", rownames(diversity.depth)),]
+TA.diversity = ggscatter(TA, x = "Depth", y = "Shannon", ylab = "Shannon index", 
+				xlab = "Depth (cm)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+			 ggtitle("Iran-TA01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+TA.lm = summary(lm(Shannon~Depth, TA))
+
+diversity.figure = ggarrange(AK.diversity,QK.diversity,GJ.diversity,GG.diversity,TA.diversity,COM.diversity,PA01.diversity,PA02.diversity,AR.diversity,SH.diversity,SI.diversity,SM.diversity,DSZ.diversity,SYNH.diversity,SYNH_C11.diversity, LGH.diversity,ncol=5,nrow=4)
+ggsave(filename="diversity.figure.pdf", plot=diversity.figure, device=cairo_pdf, width=297, height=210, units="mm")
+
+# distance decay within each core
+AK.dist <-DIST.all %>% filter(grepl("AK03", X1))%>% filter(grepl("AK03", X2))
+AK.dist$sor = log(AK.dist$sor,10)
+AK.dist$geodist = log(AK.dist$geodist,10)
+AK.similarity = ggscatter(AK.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Georgia-AK03")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+AK.dist.lm  = summary(lm(sor~geodist, AK.dist))
+
+AR.dist <-DIST.all %>% filter(grepl("AR01", X1))%>% filter(grepl("AR01", X2))
+AR.dist$sor = log(AR.dist$sor,10)
+AR.dist$geodist = log(AR.dist$geodist,10)
+AR.similarity = ggscatter(AR.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Italy-AR01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+AR.dist.lm  = summary(lm(sor~geodist, AR.dist))
+
+COM.dist <-DIST.all %>% filter(grepl("COM01", X1))%>% filter(grepl("COM01", X2))
+COM.dist$sor = log(COM.dist$sor,10)
+COM.dist$geodist = log(COM.dist$geodist,10)
+COM.similarity = ggscatter(COM.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Italy-COM01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+COM.dist.lm  = summary(lm(sor~geodist, COM.dist))
+
+DSZ.dist <-DIST.all %>% filter(grepl("DSZ01", X1))%>% filter(grepl("DSZ01", X2))
+DSZ.dist$sor = log(DSZ.dist$sor,10)
+DSZ.dist$geodist = log(DSZ.dist$geodist,10)
+DSZ.similarity = ggscatter(DSZ.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("China-DSZ01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+DSZ.dist.lm  = summary(lm(sor~geodist, DSZ.dist))
+
+GG.dist <-DIST.all %>% filter(grepl("GG", X1))%>% filter(grepl("GG", X2))
+GG.dist$sor = log(GG.dist$sor,10)
+GG.dist$geodist = log(GG.dist$geodist,10)
+GG.similarity = ggscatter(GG.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Iran-GG")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+GG.dist.lm  = summary(lm(sor~geodist, GG.dist))
+
+GJ.dist <-DIST.all %>% filter(grepl("GJ", X1))%>% filter(grepl("GJ", X2))
+GJ.dist$sor = log(GJ.dist$sor,10)
+GJ.dist$geodist = log(GJ.dist$geodist,10)
+GJ.similarity = ggscatter(GJ.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Georgia-GJ")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+GJ.dist.lm  = summary(lm(sor~geodist, GJ.dist))
+
+LGH.dist <-DIST.all %>% filter(grepl("LGH03", X1))%>% filter(grepl("LGH03", X2))
+LGH.dist$sor = log(LGH.dist$sor,10)
+LGH.dist$geodist = log(LGH.dist$geodist,10)
+LGH.similarity = ggscatter(LGH.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Taiwan-LGH03")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+LGH.dist.lm  = summary(lm(sor~geodist, LGH.dist))
+
+PA01.dist <-DIST.all %>% filter(grepl("PA01", X1))%>% filter(grepl("PA01", X2))
+PA01.dist$sor = log(PA01.dist$sor,10)
+PA01.dist$geodist = log(PA01.dist$geodist,10)
+PA01.similarity = ggscatter(PA01.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Italy-PA01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+PA01.dist.lm  = summary(lm(sor~geodist, PA01.dist))
+
+PA02.dist <-DIST.all %>% filter(grepl("PA02", X1))%>% filter(grepl("PA02", X2))
+PA02.dist$sor = log(PA02.dist$sor,10)
+PA02.dist$geodist = log(PA02.dist$geodist,10)
+PA02.similarity = ggscatter(PA02.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Italy-PA02")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+PA02.dist.lm  = summary(lm(sor~geodist, PA02.dist))
+
+QK.dist <-DIST.all %>% filter(grepl("QK01", X1))%>% filter(grepl("QK01", X2))
+QK.dist$sor = log(QK.dist$sor,10)
+QK.dist$geodist = log(QK.dist$geodist,10)
+QK.similarity = ggscatter(QK.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Georgia-QK01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+QK.dist.lm  = summary(lm(sor~geodist, QK.dist))
+
+SH.dist <-DIST.all %>% filter(grepl("SH", X1))%>% filter(grepl("SH", X2))
+SH.dist$sor = log(SH.dist$sor,10)
+SH.dist$geodist = log(SH.dist$geodist,10)
+SH.similarity = ggscatter(SH.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Myanmar-SH")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SH.dist.lm  = summary(lm(sor~geodist, SH.dist))
+
+SI.dist <-DIST.all %>% filter(grepl("SI", X1))%>% filter(grepl("SI", X2))
+SI.dist$sor = log(SI.dist$sor,10)
+SI.dist$geodist = log(SI.dist$geodist,10)
+SI.similarity = ggscatter(SI.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Myanmar-SI")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SI.dist.lm  = summary(lm(sor~geodist, SI.dist))
+
+SM.dist <-DIST.all %>% filter(grepl("SM22", X1))%>% filter(grepl("SM22", X2))
+SM.dist$sor = log(SM.dist$sor,10)
+SM.dist$geodist = log(SM.dist$geodist,10)
+SM.similarity = ggscatter(SM.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("China-SM22")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SM.dist.lm  = summary(lm(sor~geodist, SM.dist))
+
+SYNH02_C11.dist <-DIST.all %>% filter(grepl("SYNH02_C11", X1))%>% filter(grepl("SYNH02_C11", X2))
+SYNH02_C11.dist$sor = log(SYNH02_C11.dist$sor,10)
+SYNH02_C11.dist$geodist = log(SYNH02_C11.dist$geodist,10)
+SYNH02_C11.similarity = ggscatter(SYNH02_C11.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Taiwan-SYNH02_C11")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SYNH02_C11.dist.lm  = summary(lm(sor~geodist, SYNH02_C11.dist))
+
+SYNH02_C4.dist <-DIST.all %>% filter(grepl("SYNH02_C4", X1))%>% filter(grepl("SYNH02_C4", X2))
+SYNH02_C4.dist$sor = log(SYNH02_C4.dist$sor,10)
+SYNH02_C4.dist$geodist = log(SYNH02_C4.dist$geodist,10)
+SYNH02_C4.similarity = ggscatter(SYNH02_C4.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Taiwan-SYNH02_C4")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+SYNH02_C4.dist.lm  = summary(lm(sor~geodist, SYNH02_C4.dist))
+
+TA.dist <-DIST.all %>% filter(grepl("TA01", X1))%>% filter(grepl("TA01", X2))
+TA.dist$sor = log(TA.dist$sor,10)
+TA.dist$geodist = log(TA.dist$geodist,10)
+TA.similarity = ggscatter(TA.dist, x = "geodist", y = "sor", ylab = "log10 Community similarity", 
+				xlab = "log10 Geographic distance (km)")+
+				geom_smooth(method = "lm", se = FALSE, linetype = "dashed", 
+				color="gray", size=0.5)+
+				ggtitle("Iran-TA01")+theme(plot.title = element_text(hjust = 0.5),axis.ticks.length=unit(.25, "cm"))+
+			 theme(panel.border = element_rect(color = "black", fill=NA, size=1))
+TA.dist.lm  = summary(lm(sor~geodist, TA.dist))
+
+similarity.figure = ggarrange(AK.similarity,QK.similarity,GJ.similarity,GG.similarity,TA.similarity,COM.similarity,PA01.similarity,PA02.similarity,AR.similarity,SH.similarity,SI.similarity,SM.similarity,DSZ.similarity,SYNH02_C4.similarity,SYNH02_C11.similarity, LGH.similarity,ncol=5,nrow=4)
+ggsave(filename="similarity.figure.pdf", plot=similarity.figure, device=cairo_pdf, width=297, height=210, units="mm")
+
+**Coefficient of variation**
+CV = function (x) {(sd(x)/mean(x))*100}
+AK.numeric = sample_data_numeric[grep("^AK03", rownames(sample_data_numeric)),]
+CV(AK.numeric$Sulfate)
+CV(AK.numeric$Chloride)
+rcorr(as.matrix(AK.numeric), type=c("pearson"))
+AR.numeric = sample_data_numeric[grep("^AR01", rownames(sample_data_numeric)),]
+CV(AR.numeric$Sulfate)
+CV(AR.numeric$Chloride)
+rcorr(as.matrix(AR.numeric), type=c("pearson"))
+COM.numeric = sample_data_numeric[grep("^COM01", rownames(sample_data_numeric)),]
+CV(COM.numeric$Sulfate)
+CV(COM.numeric$Chloride)
+rcorr(as.matrix(COM.numeric), type=c("pearson"))
+PA01.numeric = sample_data_numeric[grep("^PA01", rownames(sample_data_numeric)),]
+CV(PA01.numeric$Sulfate)
+CV(PA01.numeric$Chloride)
+rcorr(as.matrix(PA01.numeric), type=c("pearson"))
+PA02.numeric = sample_data_numeric[grep("^PA02", rownames(sample_data_numeric)),]
+CV(PA02.numeric$Sulfate)
+CV(PA02.numeric$Chloride)
+rcorr(as.matrix(PA02.numeric), type=c("pearson"))
+GJ.numeric = sample_data_numeric[grep("^GJ", rownames(sample_data_numeric)),]
+CV(GJ.numeric$Sulfate)
+CV(GJ.numeric$Chloride)
+rcorr(as.matrix(GJ.numeric), type=c("pearson"))
+QK.numeric = sample_data_numeric[grep("^QK01", rownames(sample_data_numeric)),]
+CV(QK.numeric$Sulfate)
+CV(QK.numeric$Chloride)
+rcorr(as.matrix(QK.numeric), type=c("pearson"))
+GG.numeric = sample_data_numeric[grep("^GG", rownames(sample_data_numeric)),]
+CV(GG.numeric$Sulfate)
+CV(GG.numeric$Chloride)
+rcorr(as.matrix(GG.numeric), type=c("pearson"))
+TA01.numeric = sample_data_numeric[grep("^TA01", rownames(sample_data_numeric)),]
+CV(TA01.numeric$Sulfate)
+CV(TA01.numeric$Chloride)
+rcorr(as.matrix(TA01.numeric), type=c("pearson"))
+SM.numeric = sample_data_numeric[grep("^SM22", rownames(sample_data_numeric)),]
+CV(SM.numeric$Sulfate)
+CV(SM.numeric$Chloride)
+rcorr(as.matrix(SM.numeric), type=c("pearson"))
+DSZ.numeric = sample_data_numeric[grep("^DSZ01", rownames(sample_data_numeric)),]
+CV(DSZ.numeric$Sulfate)
+CV(DSZ.numeric$Chloride)
+rcorr(as.matrix(DSZ.numeric), type=c("pearson"))
+SH.numeric = sample_data_numeric[grep("^SH", rownames(sample_data_numeric)),]
+CV(SH.numeric$Sulfate)
+CV(SH.numeric$Chloride)
+rcorr(as.matrix(SH.numeric), type=c("pearson"))
+SI.numeric = sample_data_numeric[grep("^SI", rownames(sample_data_numeric)),]
+CV(SI.numeric$Sulfate)
+CV(SI.numeric$Chloride)
+rcorr(as.matrix(SI.numeric), type=c("pearson"))
+LGH.numeric = sample_data_numeric[grep("^LGH03", rownames(sample_data_numeric)),]
+CV(LGH.numeric$Sulfate)
+CV(LGH.numeric$Chloride)
+rcorr(as.matrix(LGH.numeric), type=c("pearson"))
